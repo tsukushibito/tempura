@@ -1,2 +1,2 @@
-# tempura-renderer
-Tempura Renderer
+# tempura
+This is an experimental personal game engine project.
