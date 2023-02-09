@@ -4,10 +4,10 @@ use ash::{util::read_spv, vk};
 use spirv_reflect::ShaderModule;
 use tempura_render as tr;
 
-use super::Renderer;
+use crate::Device;
 
 pub struct Shader {
-    renderer: Rc<Renderer>,
+    device: Rc<Device>,
     pub(crate) vertex_shader: vk::ShaderModule,
     pub(crate) vertex_shader_reflect: spirv_reflect::ShaderModule,
     pub(crate) fragment_shader: vk::ShaderModule,
@@ -16,7 +16,7 @@ pub struct Shader {
 
 impl Shader {
     pub(crate) fn new(
-        renderer: &std::rc::Rc<Renderer>,
+        device: &std::rc::Rc<Device>,
         vertex_shader_code: &Vec<u8>,
         fragment_shader_code: &Vec<u8>,
     ) -> Self {
@@ -26,7 +26,7 @@ impl Shader {
             let vertex_shader_create_info = vk::ShaderModuleCreateInfo::builder()
                 .code(&vertex_shader_code)
                 .build();
-            let vertex_shader = renderer
+            let vertex_shader = device
                 .device
                 .create_shader_module(&vertex_shader_create_info, None)
                 .expect("create_shader_module failed.");
@@ -39,7 +39,7 @@ impl Shader {
             let fragment_shader_create_info = vk::ShaderModuleCreateInfo::builder()
                 .code(&fragment_shader_code)
                 .build();
-            let fragment_shader = renderer
+            let fragment_shader = device
                 .device
                 .create_shader_module(&fragment_shader_create_info, None)
                 .expect("create_shader_module failed.");
@@ -47,7 +47,7 @@ impl Shader {
                 .expect("fragment shader reflection failed.");
 
             Shader {
-                renderer: renderer.clone(),
+                device: device.clone(),
                 vertex_shader,
                 vertex_shader_reflect,
                 fragment_shader,
@@ -60,14 +60,12 @@ impl Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
-            self.renderer
+            self.device
                 .device
                 .destroy_shader_module(self.vertex_shader, None);
-            self.renderer
+            self.device
                 .device
                 .destroy_shader_module(self.fragment_shader, None);
         }
     }
 }
-
-impl tr::Shader for Shader {}

@@ -2,8 +2,9 @@ use std::{ffi::CString, rc::Rc};
 
 use ash::vk;
 
-use super::{Renderer, Shader};
-use tempura_render as tr;
+use crate::Device;
+
+use super::Shader;
 
 pub struct Material {
     shader: Rc<Shader>,
@@ -12,14 +13,14 @@ pub struct Material {
 }
 
 impl Material {
-    pub(crate) fn new(renderer: &Rc<Renderer>, shader: &Rc<Shader>) -> Self {
+    pub(crate) fn new(device: &Rc<Device>, shader: &Rc<Shader>) -> Self {
         unsafe {
             let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
                 .flags(vk::PipelineLayoutCreateFlags::empty())
                 .set_layouts(&[])
                 .push_constant_ranges(&[])
                 .build();
-            let pipeline_layout = renderer
+            let pipeline_layout = device
                 .device
                 .create_pipeline_layout(&pipeline_layout_create_info, None)
                 .expect("create_pipeline_layout failed.");
@@ -88,7 +89,7 @@ impl Material {
                 .dynamic_state(&dynamic_state)
                 .subpass(0)
                 .build();
-            let pipeline = renderer
+            let pipeline = device
                 .device
                 .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
                 .expect("create_graphics_pipeline failed.");
@@ -99,13 +100,5 @@ impl Material {
                 pipeline_layout,
             }
         }
-    }
-}
-
-impl tr::Material for Material {
-    type Shader = Shader;
-
-    fn shader(&self) -> std::rc::Rc<Self::Shader> {
-        self.shader.clone()
     }
 }

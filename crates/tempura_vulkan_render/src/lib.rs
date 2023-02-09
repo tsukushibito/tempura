@@ -1,10 +1,11 @@
+mod device;
 mod material;
 mod render_target;
 mod renderer;
 mod shader;
 mod swapchain;
-mod wrapper;
 
+pub use device::*;
 pub use material::*;
 pub use render_target::*;
 pub use renderer::*;

@@ -1,22 +1,36 @@
-use std::ffi::{c_char, CString};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    ffi::{c_char, CString},
+    rc::Rc,
+};
 
 use ash::vk;
 use raw_window_handle::RawDisplayHandle;
 
 pub struct Device {
-    pub instance: ash::Instance,
-    pub physical_device: vk::PhysicalDevice,
-    pub device: ash::Device,
-    pub surface_loader: ash::extensions::khr::Surface,
-    pub swapchain_loader: ash::extensions::khr::Swapchain,
-    pub graphics_queue_family_index: u32,
+    pub(crate) entry: ash::Entry,
+    pub(crate) instance: ash::Instance,
+    pub(crate) instance_info: vk::InstanceCreateInfo,
+    pub(crate) physical_device: vk::PhysicalDevice,
+    pub(crate) device: ash::Device,
+    pub(crate) device_info: vk::DeviceCreateInfo,
+    pub(crate) surface_loader: ash::extensions::khr::Surface,
+    pub(crate) swapchain_loader: ash::extensions::khr::Swapchain,
+    pub(crate) graphics_queue_family_index: u32,
+    pub(crate) debug_utils_loader: ash::extensions::ext::DebugUtils,
+    pub(crate) debug_messenger_create_info: vk::DebugUtilsMessengerCreateInfoEXT,
+    pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
+
+    destroy_request_queues: RefCell<[VecDeque<Box<dyn FnOnce(&Self)>>; 2]>,
+    current_destroy_queue_index: Cell<usize>,
 }
 
 impl Device {
     pub fn new(display_handle: &RawDisplayHandle) -> Self {
         unsafe {
             let entry = ash::Entry::load().unwrap();
-            let instance =
+            let (instance, instance_create_info) =
                 create_instance(&entry, display_handle).expect("create_instance failed.");
             let physical_device = pick_physical_device(&instance)
                 .expect("pick_physical_device can't find physical device.");
@@ -34,21 +48,73 @@ impl Device {
                 })
                 .expect("can't find graphics queue family.");
 
-            let device = create_device(&instance, &physical_device, graphics_queue_family_index)
-                .expect("create_device failed.");
+            let (device, device_create_info) =
+                create_device(&instance, &physical_device, graphics_queue_family_index)
+                    .expect("create_device failed.");
 
             let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
             let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
 
+            let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+            let debug_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                )
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
+                .pfn_user_callback(Some(debug_callback))
+                .build();
+            let debug_messenger = debug_utils_loader
+                .create_debug_utils_messenger(&debug_messenger_create_info, None)
+                .unwrap();
+
+            let destroy_request_lists = Default::default();
+
             Device {
+                entry,
                 instance,
+                instance_info: instance_create_info,
                 physical_device,
                 device,
+                device_info: device_create_info,
                 surface_loader,
                 swapchain_loader,
                 graphics_queue_family_index,
+                debug_utils_loader,
+                debug_messenger,
+                debug_messenger_create_info,
+                destroy_request_queues: destroy_request_lists,
+                current_destroy_queue_index: Cell::new(0),
             }
         }
+    }
+
+    pub fn execute_destroy_request(&self) {
+        let mut index = self.current_destroy_queue_index.get();
+        let queues = &mut self.destroy_request_queues.borrow_mut();
+        let requests = &mut queues[index];
+        if !requests.is_empty() {
+            unsafe { self.device.device_wait_idle().unwrap() };
+            while !requests.is_empty() {
+                let req = requests.pop_front().unwrap();
+                req(self);
+            }
+        }
+
+        index = (index + 1) % queues.len();
+
+        self.current_destroy_queue_index.set(index);
+    }
+
+    pub fn request_destroy(self: &Rc<Self>, req: Box<dyn FnOnce(&Device)>) {
+        let requests =
+            &mut self.destroy_request_queues.borrow_mut()[self.current_destroy_queue_index.get()];
+        requests.push_back(req);
     }
 }
 
@@ -58,6 +124,15 @@ impl Drop for Device {
             self.device
                 .device_wait_idle()
                 .expect("device_wait_idle failed.");
+            let queues = &mut self.destroy_request_queues.borrow_mut();
+            queues.iter_mut().for_each(|queue| {
+                while !queue.is_empty() {
+                    let req = queue.pop_front().unwrap();
+                    req(self);
+                }
+            });
+            self.debug_utils_loader
+                .destroy_debug_utils_messenger(self.debug_messenger, None);
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }
@@ -67,7 +142,7 @@ impl Drop for Device {
 fn create_instance(
     entry: &ash::Entry,
     display_handle: &RawDisplayHandle,
-) -> ash::prelude::VkResult<ash::Instance> {
+) -> ash::prelude::VkResult<(ash::Instance, vk::InstanceCreateInfo)> {
     unsafe {
         let app_name = CString::new("tempura").unwrap();
         let engine_name = CString::new("tempura").unwrap();
@@ -141,7 +216,10 @@ fn create_instance(
         } else {
             create_info
         };
-        entry.create_instance(&create_info, None)
+        match entry.create_instance(&create_info, None) {
+            Ok(instance) => Ok((instance, *create_info)),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -186,7 +264,7 @@ fn create_device(
     instance: &ash::Instance,
     pdevice: &vk::PhysicalDevice,
     graphics_queue_family_index: u32,
-) -> ash::prelude::VkResult<ash::Device> {
+) -> ash::prelude::VkResult<(ash::Device, vk::DeviceCreateInfo)> {
     unsafe {
         let extension_names = [
             ash::extensions::khr::Swapchain::name().as_ptr(),
@@ -208,6 +286,38 @@ fn create_device(
             .enabled_features(&features)
             .queue_create_infos(&queue_infos)
             .build();
-        instance.create_device(*pdevice, &create_info, None)
+        match instance.create_device(*pdevice, &create_info, None) {
+            Ok(device) => Ok((device, create_info)),
+            Err(err) => Err(err),
+        }
     }
+}
+
+unsafe extern "system" fn debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = *p_callback_data;
+    let message_id_number = callback_data.message_id_number;
+
+    let message_id_name = if callback_data.p_message_id_name.is_null() {
+        std::borrow::Cow::from("")
+    } else {
+        std::ffi::CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
+    };
+
+    let message = if callback_data.p_message.is_null() {
+        std::borrow::Cow::from("")
+    } else {
+        std::ffi::CStr::from_ptr(callback_data.p_message).to_string_lossy()
+    };
+
+    println!(
+        "{:?}:\n{:?} [{} ({})] : {}\n",
+        message_severity, message_type, message_id_name, message_id_number, message,
+    );
+
+    vk::FALSE
 }
