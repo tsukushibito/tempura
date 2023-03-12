@@ -1,7 +1,10 @@
-use std::rc::Rc;
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use ash::{prelude::VkResult, vk};
-use raw_window_handle::RawDisplayHandle;
 
 use crate::RenderTarget;
 
@@ -10,22 +13,17 @@ use super::Device;
 pub struct Renderer {
     pub(crate) device: Rc<Device>,
 
-    present_queue: vk::Queue,
-    present_semaphore: vk::Semaphore,
-    render_semaphore: vk::Semaphore,
     command_pool: vk::CommandPool,
     _setup_command_buffer: vk::CommandBuffer,
     draw_command_buffer: vk::CommandBuffer,
     render_fence: vk::Fence,
+
+    render_pass: Cell<vk::RenderPass>,
+    framebuffers: RefCell<HashMap<usize, vk::Framebuffer>>,
 }
 
 impl Renderer {
     pub fn new(device: &Rc<Device>) -> Self {
-        let present_queue = unsafe {
-            device
-                .device
-                .get_device_queue(device.graphics_queue_family_index, 0)
-        };
         let command_pool = create_command_pool(&device.device, device.graphics_queue_family_index)
             .expect("Create command pool error");
         let command_buffers = create_command_buffers(&device.device, &command_pool)
@@ -41,29 +39,15 @@ impl Renderer {
                 .create_fence(&fence_create_info, None)
                 .expect("Create fence error")
         };
-        let semaphore_create_info = vk::SemaphoreCreateInfo::default();
-        let present_semaphore = unsafe {
-            device
-                .device
-                .create_semaphore(&semaphore_create_info, None)
-                .expect("Create semaphore error")
-        };
-        let render_semaphore = unsafe {
-            device
-                .device
-                .create_semaphore(&semaphore_create_info, None)
-                .expect("Create semaphore error")
-        };
 
         Renderer {
             device: device.clone(),
-            present_queue,
-            present_semaphore,
-            render_semaphore,
             command_pool,
             _setup_command_buffer: setup_command_buffer,
             draw_command_buffer,
             render_fence,
+            render_pass: Cell::default(),
+            framebuffers: RefCell::default(),
         }
     }
 }
@@ -73,8 +57,11 @@ impl Drop for Renderer {
         unsafe {
             let device = &self.device.device;
             device.device_wait_idle().unwrap();
-            device.destroy_semaphore(self.present_semaphore, None);
-            device.destroy_semaphore(self.render_semaphore, None);
+            device.destroy_render_pass(self.render_pass.get(), None);
+            let framebuffers = self.framebuffers.borrow();
+            framebuffers.iter().for_each(|(_, framebuffer)| {
+                device.destroy_framebuffer(*framebuffer, None);
+            });
             device.destroy_fence(self.render_fence, None);
             device.destroy_command_pool(self.command_pool, None);
         }
@@ -86,7 +73,28 @@ impl tempura_render::Renderer for Renderer {
 
     fn render(&self, render_target: &Self::RenderTarget) {
         unsafe {
-            self.device.execute_destroy_request();
+            self.device.destroy_dropped_objects();
+
+            let mut render_pass = self.render_pass.get();
+            if render_pass == vk::RenderPass::null() {
+                render_pass = create_render_pass(&self.device.device, render_target);
+                self.render_pass.set(render_pass);
+            }
+
+            let mut framebuffers = self.framebuffers.borrow_mut();
+            let framebuffer = framebuffers.entry(render_target.id()).or_insert_with(|| {
+                let create_info = vk::FramebufferCreateInfo::builder()
+                    .width(render_target.extent.width)
+                    .height(render_target.extent.height)
+                    .layers(1)
+                    .render_pass(render_pass)
+                    .attachments(&render_target.views)
+                    .build();
+                self.device
+                    .device
+                    .create_framebuffer(&create_info, None)
+                    .expect("crate framebuffer error.")
+            });
 
             let device = &self.device.device;
             device
@@ -117,19 +125,38 @@ impl tempura_render::Renderer for Renderer {
                 },
             }];
 
+            let render_area = vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: render_target.extent,
+            };
+            let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                .clear_values(&clear_values)
+                .render_pass(render_pass)
+                .render_area(render_area)
+                .framebuffer(*framebuffer)
+                .build();
+
+            device.cmd_begin_render_pass(
+                self.draw_command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            device.cmd_end_render_pass(self.draw_command_buffer);
+
             device
                 .end_command_buffer(self.draw_command_buffer)
                 .expect("End commandbuffer failed.");
 
             let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&[self.present_semaphore])
+                .wait_semaphores(&[render_target.available_semaphore])
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
                 .command_buffers(&[self.draw_command_buffer])
-                .signal_semaphores(&[self.render_semaphore])
+                .signal_semaphores(&[render_target.render_finished_semaphore])
                 .build();
 
             device
-                .queue_submit(self.present_queue, &[submit_info], self.render_fence)
+                .queue_submit(self.device.render_queue, &[submit_info], self.render_fence)
                 .expect("Queue submit failed.");
         }
     }
@@ -156,5 +183,25 @@ fn create_command_buffers(
             .level(vk::CommandBufferLevel::PRIMARY)
             .build();
         device.allocate_command_buffers(&allocate_info)
+    }
+}
+
+fn create_render_pass(device: &ash::Device, render_target: &RenderTarget) -> vk::RenderPass {
+    unsafe {
+        let color_attachment_ref = vk::AttachmentReference::builder()
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build();
+        let subpass = vk::SubpassDescription::builder()
+            .color_attachments(&[color_attachment_ref])
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .build();
+        let create_info = vk::RenderPassCreateInfo::builder()
+            .attachments(&render_target.attachments)
+            .subpasses(&[subpass])
+            .build();
+
+        device
+            .create_render_pass(&create_info, None)
+            .expect("create_render_pass error")
     }
 }

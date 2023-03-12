@@ -2,7 +2,6 @@ use std::{io::Cursor, rc::Rc};
 
 use ash::{util::read_spv, vk};
 use spirv_reflect::ShaderModule;
-use tempura_render as tr;
 
 use crate::Device;
 

@@ -8,6 +8,15 @@ use std::{
 use ash::vk;
 use raw_window_handle::RawDisplayHandle;
 
+pub(crate) enum VulkanObject {
+    Image(vk::Image),
+    ImageView(vk::ImageView),
+    Surface(vk::SurfaceKHR),
+    Swapchain(vk::SwapchainKHR),
+    Semaphore(vk::Semaphore),
+    Fence(vk::Fence),
+}
+
 pub struct Device {
     pub(crate) entry: ash::Entry,
     pub(crate) instance: ash::Instance,
@@ -18,12 +27,13 @@ pub struct Device {
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) swapchain_loader: ash::extensions::khr::Swapchain,
     pub(crate) graphics_queue_family_index: u32,
+    pub(crate) render_queue: vk::Queue,
     pub(crate) debug_utils_loader: ash::extensions::ext::DebugUtils,
     pub(crate) debug_messenger_create_info: vk::DebugUtilsMessengerCreateInfoEXT,
     pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
 
-    destroy_request_queues: RefCell<[VecDeque<Box<dyn FnOnce(&Self)>>; 2]>,
-    current_destroy_queue_index: Cell<usize>,
+    dropped_object_queue_index: Cell<usize>,
+    dropped_object_queues: RefCell<[VecDeque<VulkanObject>; 2]>,
 }
 
 impl Device {
@@ -52,6 +62,8 @@ impl Device {
                 create_device(&instance, &physical_device, graphics_queue_family_index)
                     .expect("create_device failed.");
 
+            let render_queue = device.get_device_queue(graphics_queue_family_index, 0);
+
             let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
             let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
 
@@ -73,7 +85,7 @@ impl Device {
                 .create_debug_utils_messenger(&debug_messenger_create_info, None)
                 .unwrap();
 
-            let destroy_request_lists = Default::default();
+            let dropped_object_queues = Default::default();
 
             Device {
                 entry,
@@ -85,36 +97,52 @@ impl Device {
                 surface_loader,
                 swapchain_loader,
                 graphics_queue_family_index,
+                render_queue,
                 debug_utils_loader,
                 debug_messenger,
                 debug_messenger_create_info,
-                destroy_request_queues: destroy_request_lists,
-                current_destroy_queue_index: Cell::new(0),
+                dropped_object_queues,
+                dropped_object_queue_index: Cell::new(0),
             }
         }
     }
 
-    pub fn execute_destroy_request(&self) {
-        let mut index = self.current_destroy_queue_index.get();
-        let queues = &mut self.destroy_request_queues.borrow_mut();
-        let requests = &mut queues[index];
-        if !requests.is_empty() {
+    pub(crate) fn push_dropped_object(self: &Rc<Self>, object: VulkanObject) {
+        let queue =
+            &mut self.dropped_object_queues.borrow_mut()[self.dropped_object_queue_index.get()];
+        queue.push_back(object)
+    }
+
+    pub fn destroy_dropped_objects(&self) {
+        let mut index = self.dropped_object_queue_index.get();
+        let queues = &mut self.dropped_object_queues.borrow_mut();
+        let objects = &mut queues[index];
+        if !objects.is_empty() {
             unsafe { self.device.device_wait_idle().unwrap() };
-            while !requests.is_empty() {
-                let req = requests.pop_front().unwrap();
-                req(self);
+            while !objects.is_empty() {
+                let object = objects.pop_front().unwrap();
+                unsafe {
+                    match object {
+                        VulkanObject::Image(image) => self.device.destroy_image(image, None),
+                        VulkanObject::ImageView(view) => self.device.destroy_image_view(view, None),
+                        VulkanObject::Surface(surface) => {
+                            self.surface_loader.destroy_surface(surface, None)
+                        }
+                        VulkanObject::Swapchain(swapchain) => {
+                            self.swapchain_loader.destroy_swapchain(swapchain, None)
+                        }
+                        VulkanObject::Semaphore(semaphore) => {
+                            self.device.destroy_semaphore(semaphore, None)
+                        }
+                        VulkanObject::Fence(fence) => self.device.destroy_fence(fence, None),
+                    }
+                }
             }
         }
 
         index = (index + 1) % queues.len();
 
-        self.current_destroy_queue_index.set(index);
-    }
-
-    pub fn request_destroy(self: &Rc<Self>, req: Box<dyn FnOnce(&Device)>) {
-        let requests =
-            &mut self.destroy_request_queues.borrow_mut()[self.current_destroy_queue_index.get()];
-        requests.push_back(req);
+        self.dropped_object_queue_index.set(index);
     }
 }
 
@@ -124,13 +152,10 @@ impl Drop for Device {
             self.device
                 .device_wait_idle()
                 .expect("device_wait_idle failed.");
-            let queues = &mut self.destroy_request_queues.borrow_mut();
-            queues.iter_mut().for_each(|queue| {
-                while !queue.is_empty() {
-                    let req = queue.pop_front().unwrap();
-                    req(self);
-                }
-            });
+            let queue_len = self.dropped_object_queues.borrow().len();
+            for _ in 0..queue_len {
+                self.destroy_dropped_objects();
+            }
             self.debug_utils_loader
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
             self.device.destroy_device(None);

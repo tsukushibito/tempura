@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{mem::swap, rc::Rc};
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tempura_render::{Renderer, WindowSizeProvider};
@@ -35,19 +35,21 @@ fn main() {
             .unwrap(),
     );
 
-    let renderer = Rc::new(vulkan::Renderer::new(&window.raw_display_handle()));
+    let device = Rc::new(vulkan::Device::new(&window.raw_display_handle()));
+    let renderer = Rc::new(vulkan::Renderer::new(&device));
     let window_size_provider: Rc<dyn WindowSizeProvider> = Rc::new(WinitWindow {
         window: window.clone(),
     });
-    let swapchain = renderer.create_swapchain(
+    let swapchain = vulkan::Swapchain::new(
+        &device,
         &window.raw_display_handle(),
         &window.raw_window_handle(),
         &window_size_provider,
     );
 
-    let vertex_shader_code = include_bytes!("shaders/triangle.vert.spv").to_vec();
-    let fragment_shader_code = include_bytes!("shaders/triangle.frag.spv").to_vec();
-    let shader = Rc::new(renderer.create_shader(&vertex_shader_code, &fragment_shader_code));
+    // let vertex_shader_code = include_bytes!("shaders/triangle.vert.spv").to_vec();
+    // let fragment_shader_code = include_bytes!("shaders/triangle.frag.spv").to_vec();
+    // let shader = Rc::new(renderer.create_shader(&vertex_shader_code, &fragment_shader_code));
     // let _material = Rc::new(renderer.create_material(&shader));
 
     event_loop.run_return(|event, _, control_flow| {
@@ -65,7 +67,11 @@ fn main() {
             }
             Event::MainEventsCleared => {
                 //window.request_redraw();
-                renderer.render(&swapchain);
+                let rt = swapchain
+                    .acquire_next_render_target()
+                    .expect("acquire_next_render_target error.");
+                renderer.render(&rt);
+                swapchain.present();
             }
             _ => (),
         }
