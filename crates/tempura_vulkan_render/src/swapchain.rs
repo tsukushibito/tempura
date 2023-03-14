@@ -173,7 +173,7 @@ fn create_swapchain(
             .unwrap()
             .iter()
             .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+            .find(|&mode| mode == vk::PresentModeKHR::FIFO)
             .unwrap_or(vk::PresentModeKHR::FIFO);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(*surface)

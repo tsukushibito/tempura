@@ -35,17 +35,17 @@ fn main() {
             .unwrap(),
     );
 
-    let device = Rc::new(vulkan::Device::new(&window.raw_display_handle()));
-    let renderer = Rc::new(vulkan::Renderer::new(&device));
     let window_size_provider: Rc<dyn WindowSizeProvider> = Rc::new(WinitWindow {
         window: window.clone(),
     });
-    let swapchain = vulkan::Swapchain::new(
+
+    let device = Rc::new(vulkan::Device::new(&window.raw_display_handle()));
+    let renderer = Rc::new(vulkan::Renderer::new(
         &device,
         &window.raw_display_handle(),
         &window.raw_window_handle(),
         &window_size_provider,
-    );
+    ));
 
     // let vertex_shader_code = include_bytes!("shaders/triangle.vert.spv").to_vec();
     // let fragment_shader_code = include_bytes!("shaders/triangle.frag.spv").to_vec();
@@ -67,11 +67,7 @@ fn main() {
             }
             Event::MainEventsCleared => {
                 //window.request_redraw();
-                let rt = swapchain
-                    .acquire_next_render_target()
-                    .expect("acquire_next_render_target error.");
-                renderer.render(&rt);
-                swapchain.present();
+                renderer.render();
             }
             _ => (),
         }
