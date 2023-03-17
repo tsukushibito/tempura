@@ -1,7 +1,7 @@
-use std::{mem::swap, rc::Rc};
+use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use tempura_render::{Renderer, WindowSizeProvider};
+use tempura_render::WindowSizeProvider;
 use tempura_vulkan_render as vulkan;
 use winit::{
     dpi::LogicalSize,
@@ -40,12 +40,13 @@ fn main() {
     });
 
     let device = Rc::new(vulkan::Device::new(&window.raw_display_handle()));
-    let renderer = Rc::new(vulkan::Renderer::new(
+    let renderer = Rc::new(vulkan::Renderer::new(&device));
+    let swapchain = vulkan::Swapchain::new(
         &device,
         &window.raw_display_handle(),
         &window.raw_window_handle(),
         &window_size_provider,
-    ));
+    );
 
     // let vertex_shader_code = include_bytes!("shaders/triangle.vert.spv").to_vec();
     // let fragment_shader_code = include_bytes!("shaders/triangle.frag.spv").to_vec();
@@ -67,7 +68,10 @@ fn main() {
             }
             Event::MainEventsCleared => {
                 //window.request_redraw();
-                renderer.render();
+                if let Some(render_target) = swapchain.acquire_next_render_target() {
+                    renderer.render(&render_target);
+                    swapchain.present();
+                }
             }
             _ => (),
         }
