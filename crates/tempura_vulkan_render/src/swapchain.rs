@@ -7,7 +7,7 @@ use ash::vk;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use tempura_render as tr;
 
-use crate::{Device, RenderTarget, VulkanObject};
+use crate::{frame_data::FrameData, Device, RenderTarget, VulkanObject};
 
 pub struct Swapchain {
     device: Rc<Device>,
@@ -16,7 +16,8 @@ pub struct Swapchain {
     swapchain: Cell<vk::SwapchainKHR>,
     swapchain_info: Cell<vk::SwapchainCreateInfoKHR>,
     render_targets: RefCell<Vec<Rc<RenderTarget>>>,
-    next_render_target_index: Cell<u32>,
+    current_frame: Cell<usize>,
+    frame_datas: Vec<Rc<FrameData>>,
 }
 
 impl Swapchain {
@@ -41,6 +42,11 @@ impl Swapchain {
                 create_swapchain_and_render_targets(width, height, device, &surface);
 
             let image_count = render_targets.len() as u32;
+            let mut frame_datas = Vec::new();
+            for _ in 0..image_count {
+                frame_datas.push(Rc::new(FrameData::new(device)));
+            }
+
             Swapchain {
                 device: device.clone(),
                 window_size_provider: window_size_provider.clone(),
@@ -48,27 +54,30 @@ impl Swapchain {
                 swapchain: Cell::new(swapchain),
                 swapchain_info: Cell::new(swapchain_info),
                 render_targets: RefCell::new(render_targets),
-                next_render_target_index: Cell::new(image_count - 1),
+                current_frame: Cell::new(0),
+                frame_datas,
             }
         }
     }
 
-    pub fn acquire_next_render_target(&self) -> Option<Rc<RenderTarget>> {
+    pub fn acquire_next_render_target(&self) -> Option<(Rc<RenderTarget>, u32, Rc<FrameData>)> {
         unsafe {
             let render_targets = self.render_targets.borrow();
-            let index = (self.next_render_target_index.get() + 1) % render_targets.len() as u32;
-            let render_target = &render_targets[index as usize];
+
+            let current_frame = (self.current_frame.get() + 1) % render_targets.len();
+            self.current_frame.set(current_frame);
+            let frame_data = &self.frame_datas[current_frame];
+
             match self.device.swapchain_loader.acquire_next_image(
                 self.swapchain.get(),
                 std::u64::MAX,
-                render_target.available_semaphore,
+                frame_data.image_semaphore,
                 vk::Fence::null(),
             ) {
                 Ok(r) => {
-                    assert!(r.0 == index);
                     let index = r.0;
-                    self.next_render_target_index.set(index);
-                    Some(render_target.clone())
+                    let render_target = render_targets[index as usize].clone();
+                    Some((render_target.clone(), index, frame_data.clone()))
                 }
                 Err(r)
                     if r == vk::Result::ERROR_OUT_OF_DATE_KHR
@@ -83,21 +92,18 @@ impl Swapchain {
         }
     }
 
-    pub fn present(&self) {
+    pub fn present(&self, image_index: u32, frame_data: &FrameData) {
         unsafe {
-            let render_targets = self.render_targets.borrow();
-            let index = self.next_render_target_index.get() as usize;
-            let render_target = &render_targets[index];
             let present_info = vk::PresentInfoKHR::builder()
                 .swapchains(&[self.swapchain.get()])
-                .wait_semaphores(&[render_target.render_finished_semaphore])
-                .image_indices(&[self.next_render_target_index.get()])
+                .wait_semaphores(&[frame_data.drawing_semaphore])
+                .image_indices(&[image_index])
                 .build();
 
             match self
                 .device
                 .swapchain_loader
-                .queue_present(self.device.render_queue, &present_info)
+                .queue_present(self.device.graphics_queue, &present_info)
             {
                 Ok(_) => (),
                 Err(r)
@@ -130,7 +136,6 @@ impl Swapchain {
         self.swapchain.set(swapchain);
         self.swapchain_info.set(swapchain_info);
         *self.render_targets.borrow_mut() = render_targets;
-        self.next_render_target_index.set(0)
     }
 }
 

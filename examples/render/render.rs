@@ -68,10 +68,7 @@ fn main() {
             }
             Event::MainEventsCleared => {
                 //window.request_redraw();
-                if let Some(render_target) = swapchain.acquire_next_render_target() {
-                    renderer.render(&render_target);
-                    swapchain.present();
-                }
+                renderer.render(&swapchain);
             }
             _ => (),
         }

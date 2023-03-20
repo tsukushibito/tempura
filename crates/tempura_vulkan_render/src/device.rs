@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     ffi::{c_char, CString},
     rc::Rc,
 };
@@ -15,6 +15,9 @@ pub(crate) enum VulkanObject {
     Swapchain(vk::SwapchainKHR),
     Semaphore(vk::Semaphore),
     Fence(vk::Fence),
+    CommandPool(vk::CommandPool),
+    RenderPass(vk::RenderPass),
+    Framebuffer(vk::Framebuffer),
 }
 
 pub struct Device {
@@ -27,7 +30,7 @@ pub struct Device {
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) swapchain_loader: ash::extensions::khr::Swapchain,
     pub(crate) graphics_queue_family_index: u32,
-    pub(crate) render_queue: vk::Queue,
+    pub(crate) graphics_queue: vk::Queue,
     pub(crate) debug_utils_loader: ash::extensions::ext::DebugUtils,
     pub(crate) debug_messenger_create_info: vk::DebugUtilsMessengerCreateInfoEXT,
     pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
@@ -62,7 +65,7 @@ impl Device {
                 create_device(&instance, &physical_device, graphics_queue_family_index)
                     .expect("create_device failed.");
 
-            let render_queue = device.get_device_queue(graphics_queue_family_index, 0);
+            let graphics_queue = device.get_device_queue(graphics_queue_family_index, 0);
 
             let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
             let swapchain_loader = ash::extensions::khr::Swapchain::new(&instance, &device);
@@ -97,7 +100,7 @@ impl Device {
                 surface_loader,
                 swapchain_loader,
                 graphics_queue_family_index,
-                render_queue,
+                graphics_queue,
                 debug_utils_loader,
                 debug_messenger,
                 debug_messenger_create_info,
@@ -135,6 +138,13 @@ impl Device {
                             self.device.destroy_semaphore(semaphore, None)
                         }
                         VulkanObject::Fence(fence) => self.device.destroy_fence(fence, None),
+                        VulkanObject::CommandPool(pool) => {
+                            self.device.destroy_command_pool(pool, None)
+                        }
+                        VulkanObject::RenderPass(pass) => {
+                            self.device.destroy_render_pass(pass, None)
+                        }
+                        VulkanObject::Framebuffer(fb) => self.device.destroy_framebuffer(fb, None),
                     }
                 }
             }

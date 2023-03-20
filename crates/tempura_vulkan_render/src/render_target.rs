@@ -13,12 +13,10 @@ pub struct RenderTarget {
     pub(crate) images: Vec<vk::Image>,
     pub(crate) views: Vec<vk::ImageView>,
     pub(crate) attachments: Vec<vk::AttachmentDescription>,
-    pub(crate) available_semaphore: vk::Semaphore,
-    pub(crate) render_finished_semaphore: vk::Semaphore,
+    pub(crate) is_swapchain_image: bool,
 
     id: usize,
     device: Rc<Device>,
-    is_swapchain_image: bool,
 }
 
 impl RenderTarget {
@@ -82,23 +80,11 @@ impl RenderTarget {
                 .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .build();
 
-            let semaphore_create_info = vk::SemaphoreCreateInfo::default();
-            let available_semaphore = device
-                .device
-                .create_semaphore(&semaphore_create_info, None)
-                .expect("create_semaphore failed.");
-            let render_finished_semaphore = device
-                .device
-                .create_semaphore(&semaphore_create_info, None)
-                .expect("create_semaphore failed.");
-
             Self {
                 extent,
                 images: vec![image],
                 views: vec![view],
                 attachments: vec![attachment_desc],
-                available_semaphore,
-                render_finished_semaphore,
                 id: Self::get_id(),
                 device: device.clone(),
                 is_swapchain_image: true,
@@ -117,14 +103,10 @@ impl Drop for RenderTarget {
             self.device
                 .push_dropped_object(VulkanObject::ImageView(view))
         });
-        self.device
-            .push_dropped_object(VulkanObject::Semaphore(self.available_semaphore));
-        self.device
-            .push_dropped_object(VulkanObject::Semaphore(self.render_finished_semaphore));
         if !self.is_swapchain_image {
             self.images
                 .iter()
-                .for_each(|&image| self.device.push_dropped_object(VulkanObject::Image(image)))
+                .for_each(|&image| self.device.push_dropped_object(VulkanObject::Image(image)));
         }
     }
 }

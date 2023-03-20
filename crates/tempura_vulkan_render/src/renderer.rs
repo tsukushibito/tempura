@@ -6,17 +6,12 @@ use std::{
 
 use ash::{prelude::VkResult, vk};
 
-use crate::RenderTarget;
+use crate::{RenderTarget, Swapchain, VulkanObject};
 
 use super::Device;
 
 pub struct Renderer {
     pub(crate) device: Rc<Device>,
-
-    command_pool: vk::CommandPool,
-    _setup_command_buffer: vk::CommandBuffer,
-    draw_command_buffer: vk::CommandBuffer,
-    render_fence: vk::Fence,
 
     render_pass: Cell<vk::RenderPass>,
     framebuffers: RefCell<HashMap<usize, vk::Framebuffer>>,
@@ -24,40 +19,24 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(device: &Rc<Device>) -> Self {
-        let command_pool = create_command_pool(&device.device, device.graphics_queue_family_index)
-            .expect("Create command pool error");
-        let command_buffers = create_command_buffers(&device.device, &command_pool)
-            .expect("Create command buffers error");
-        let setup_command_buffer = command_buffers[0];
-        let draw_command_buffer = command_buffers[1];
-        let fence_create_info = vk::FenceCreateInfo::builder()
-            .flags(vk::FenceCreateFlags::SIGNALED)
-            .build();
-        let render_fence = unsafe {
-            device
-                .device
-                .create_fence(&fence_create_info, None)
-                .expect("Create fence error")
-        };
-
         Renderer {
             device: device.clone(),
-            command_pool,
-            _setup_command_buffer: setup_command_buffer,
-            draw_command_buffer,
-            render_fence,
             render_pass: Cell::default(),
             framebuffers: RefCell::default(),
         }
     }
 
-    pub fn render(&self, render_target: &RenderTarget) {
+    pub fn render(&self, swapchain: &Swapchain) {
         unsafe {
-            self.device.destroy_dropped_objects();
+            let result = swapchain.acquire_next_render_target();
+            if result.is_none() {
+                return;
+            }
+            let (render_target, image_index, frame_data) = result.unwrap();
 
             let mut render_pass = self.render_pass.get();
             if render_pass == vk::RenderPass::null() {
-                render_pass = create_render_pass(&self.device.device, render_target);
+                render_pass = create_render_pass(&self.device.device, &render_target);
                 self.render_pass.set(render_pass);
             }
 
@@ -78,25 +57,25 @@ impl Renderer {
 
             let device = &self.device.device;
             device
-                .wait_for_fences(&[self.render_fence], true, std::u64::MAX)
+                .wait_for_fences(&[frame_data.drawing_fence], true, std::u64::MAX)
                 .expect("Wait for fence failed.");
             device
-                .reset_fences(&[self.render_fence])
+                .reset_fences(&[frame_data.drawing_fence])
                 .expect("Reset fences failed.");
 
             device
-                .reset_command_buffer(
-                    self.draw_command_buffer,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                .reset_command_pool(
+                    frame_data.command_pool,
+                    vk::CommandPoolResetFlags::RELEASE_RESOURCES,
                 )
-                .expect("Reset command buffer failed.");
+                .expect("reset command pool failed.");
 
             let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
                 .build();
 
             device
-                .begin_command_buffer(self.draw_command_buffer, &command_buffer_begin_info)
+                .begin_command_buffer(frame_data.command_buffers[0], &command_buffer_begin_info)
                 .expect("Begin commandbuffer failed.");
 
             let clear_values = [vk::ClearValue {
@@ -117,27 +96,33 @@ impl Renderer {
                 .build();
 
             device.cmd_begin_render_pass(
-                self.draw_command_buffer,
+                frame_data.command_buffers[0],
                 &render_pass_begin_info,
                 vk::SubpassContents::INLINE,
             );
 
-            device.cmd_end_render_pass(self.draw_command_buffer);
+            device.cmd_end_render_pass(frame_data.command_buffers[0]);
 
             device
-                .end_command_buffer(self.draw_command_buffer)
+                .end_command_buffer(frame_data.command_buffers[0])
                 .expect("End commandbuffer failed.");
 
             let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&[render_target.available_semaphore])
+                .wait_semaphores(&[frame_data.image_semaphore])
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                .command_buffers(&[self.draw_command_buffer])
-                .signal_semaphores(&[render_target.render_finished_semaphore])
+                .command_buffers(&[frame_data.command_buffers[0]])
+                .signal_semaphores(&[frame_data.drawing_semaphore])
                 .build();
 
             device
-                .queue_submit(self.device.render_queue, &[submit_info], self.render_fence)
+                .queue_submit(
+                    self.device.graphics_queue,
+                    &[submit_info],
+                    frame_data.drawing_fence,
+                )
                 .expect("Queue submit failed.");
+
+            swapchain.present(image_index, &frame_data)
         }
     }
 }
@@ -145,15 +130,13 @@ impl Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            let device = &self.device.device;
-            device.device_wait_idle().unwrap();
-            device.destroy_render_pass(self.render_pass.get(), None);
+            self.device
+                .push_dropped_object(VulkanObject::RenderPass(self.render_pass.get()));
             let framebuffers = self.framebuffers.borrow();
-            framebuffers.iter().for_each(|(_, framebuffer)| {
-                device.destroy_framebuffer(*framebuffer, None);
+            framebuffers.iter().for_each(|(_, &framebuffer)| {
+                self.device
+                    .push_dropped_object(VulkanObject::Framebuffer(framebuffer))
             });
-            device.destroy_fence(self.render_fence, None);
-            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }
