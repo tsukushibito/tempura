@@ -5,13 +5,13 @@ use std::{
 
 use ash::{prelude::VkResult, vk};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use tempura_render::{Swapchain, WindowSizeProvider};
+use tempura_render as tr;
 
-use super::{Renderer, VulkanRenderTarget};
+use super::{RenderTarget, Renderer};
 
-pub struct VulkanSwapchain {
+pub struct Swapchain {
     renderer: Rc<Renderer>,
-    window_size_provider: Rc<dyn WindowSizeProvider>,
+    window_size_provider: Rc<dyn tr::WindowSizeProvider>,
     surface: vk::SurfaceKHR,
 
     swapchain: Cell<vk::SwapchainKHR>,
@@ -21,15 +21,16 @@ pub struct VulkanSwapchain {
     render_pass: Cell<vk::RenderPass>,
     framebuffers: RefCell<Vec<vk::Framebuffer>>,
 
+    // render_targets: RefCell<Vec<RenderTarget>>,
     next_image_index: Cell<u32>,
 }
 
-impl VulkanSwapchain {
+impl Swapchain {
     pub(crate) fn new(
         renderer: &Rc<Renderer>,
         display_handle: &RawDisplayHandle,
         window_handle: &RawWindowHandle,
-        window_size_provider: &Rc<dyn WindowSizeProvider>,
+        window_size_provider: &Rc<dyn tr::WindowSizeProvider>,
     ) -> Self {
         unsafe {
             let surface = ash_window::create_surface(
@@ -57,7 +58,7 @@ impl VulkanSwapchain {
                 &surface,
             );
 
-            VulkanSwapchain {
+            Swapchain {
                 renderer: renderer.clone(),
                 window_size_provider: window_size_provider.clone(),
                 surface,
@@ -198,7 +199,7 @@ impl VulkanSwapchain {
 }
 
 fn create_swapchain_objects(
-    window_size_provider: &dyn WindowSizeProvider,
+    window_size_provider: &dyn tr::WindowSizeProvider,
     physical_device: &ash::vk::PhysicalDevice,
     device: &ash::Device,
     swapchain_loader: &ash::extensions::khr::Swapchain,
@@ -340,7 +341,7 @@ fn create_swapchain_objects(
     }
 }
 
-impl Drop for VulkanSwapchain {
+impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
             self.renderer.device.device_wait_idle().unwrap();
@@ -352,6 +353,4 @@ impl Drop for VulkanSwapchain {
     }
 }
 
-impl Swapchain for VulkanSwapchain {
-    type RenderTarget = VulkanRenderTarget;
-}
+impl tr::Swapchain for Swapchain {}

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tempura_render::{Renderer, WindowSizeProvider};
-use tempura_vulkan_render::vulkan;
+use tempura_vulkan_render as vulkan;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},

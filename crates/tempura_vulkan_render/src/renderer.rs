@@ -6,7 +6,7 @@ use std::{
 use ash::{extensions::ext::DebugUtils, prelude::VkResult, vk, Device, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use super::{Material, Shader, VulkanSwapchain};
+use super::{Material, Shader, Swapchain};
 use tempura_render as tr;
 
 pub struct Renderer {
@@ -129,7 +129,7 @@ impl Drop for Renderer {
 }
 
 impl tr::Renderer for Renderer {
-    type Swapchain = VulkanSwapchain;
+    type Swapchain = Swapchain;
     type Shader = Shader;
     type Material = Material;
 
@@ -198,7 +198,7 @@ impl tr::Renderer for Renderer {
         window_handle: &raw_window_handle::RawWindowHandle,
         window_size_provider: &Rc<dyn tempura_render::WindowSizeProvider>,
     ) -> Self::Swapchain {
-        VulkanSwapchain::new(self, display_handle, window_handle, window_size_provider)
+        Swapchain::new(self, display_handle, window_handle, window_size_provider)
     }
 
     fn create_shader(

@@ -25,9 +25,7 @@ pub trait Renderer {
     fn create_material(self: &Rc<Self>, shader: &Rc<Self::Shader>) -> Self::Material;
 }
 
-pub trait Swapchain {
-    type RenderTarget;
-}
+pub trait Swapchain {}
 
 pub trait Shader {}
 pub trait RenderTarget {}
