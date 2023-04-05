@@ -2,9 +2,13 @@ use std::ffi::{c_char, CString};
 
 use ash::{
     extensions::{self, ext::DebugUtils},
-    vk, Device, Entry, Instance,
+    util, vk, Device, Entry, Instance,
 };
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle};
+
+pub trait Window: HasRawDisplayHandle + HasRawWindowHandle {
+    fn window_size(&self) -> (u32, u32);
+}
 
 pub struct QueueFamilyIndices {
     graphics_family: Option<u32>,
@@ -15,6 +19,7 @@ struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub images: Vec<vk::Image>,
     pub image_views: Vec<vk::ImageView>,
+    pub render_pass: vk::RenderPass,
     pub framebuffers: Vec<vk::Framebuffer>,
     pub extent: vk::Extent2D,
     pub format: vk::Format,
@@ -34,10 +39,6 @@ pub struct Renderer {
     present_command_pool: Option<vk::CommandPool>,
     present_command_buffers: Option<Vec<vk::CommandBuffer>>,
     debug_messenger: vk::DebugUtilsMessengerEXT,
-}
-
-pub trait Window: HasRawDisplayHandle + HasRawWindowHandle {
-    fn window_size(&self) -> (u32, u32);
 }
 
 impl Renderer {
@@ -120,6 +121,48 @@ impl Renderer {
             present_command_buffers,
             debug_messenger,
         })
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .device_wait_idle()
+                .expect("device_wait_idle error");
+
+            let swapchain_entry =
+                ash::extensions::khr::Swapchain::new(&self.instance, &self.device);
+            swapchain_entry.destroy_swapchain(self.swapchain.swapchain, None);
+
+            for &framebuffer in &self.swapchain.framebuffers {
+                self.device.destroy_framebuffer(framebuffer, None)
+            }
+
+            self.device
+                .destroy_render_pass(self.swapchain.render_pass, None);
+
+            for &image_view in &self.swapchain.image_views {
+                self.device.destroy_image_view(image_view, None);
+            }
+
+            let surface_entry = ash::extensions::khr::Surface::new(&self.entry, &self.instance);
+            surface_entry.destroy_surface(self.swapchain.surface, None);
+
+            self.device
+                .destroy_command_pool(self.graphics_command_pool, None);
+            if let Some(pool) = self.present_command_pool {
+                self.device.destroy_command_pool(pool, None)
+            };
+
+            let debug_utils_entry =
+                ash::extensions::ext::DebugUtils::new(&self.entry, &self.instance);
+            debug_utils_entry.destroy_debug_utils_messenger(self.debug_messenger, None);
+
+            self.device.destroy_device(None);
+
+            self.instance.destroy_instance(None);
+        }
     }
 }
 
@@ -241,7 +284,8 @@ fn find_queue_family_indices(
     let surface_entry = extensions::khr::Surface::new(entry, instance);
 
     for (index, queue_family) in queue_families.iter().enumerate() {
-        if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+        if graphics_family.is_none() && queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+        {
             graphics_family = Some(index as u32);
         }
 
@@ -281,17 +325,22 @@ fn create_device(
     ];
 
     let queue_priorities = [1.0];
+    let graphics_family_index = queue_family_indices.graphics_family.unwrap();
     let graphics_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-        .queue_family_index(queue_family_indices.graphics_family.unwrap())
+        .queue_family_index(graphics_family_index)
         .queue_priorities(&queue_priorities)
         .build();
+    let mut queue_infos = vec![graphics_queue_create_info];
 
-    let present_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-        .queue_family_index(queue_family_indices.present_family.unwrap())
-        .queue_priorities(&queue_priorities)
-        .build();
+    let present_family_index = queue_family_indices.present_family.unwrap();
+    if present_family_index != graphics_family_index {
+        let present_queue_create_info = vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(queue_family_indices.present_family.unwrap())
+            .queue_priorities(&queue_priorities)
+            .build();
+        queue_infos.push(present_queue_create_info);
+    }
 
-    let queue_infos = [graphics_queue_create_info, present_queue_create_info];
     let create_info = vk::DeviceCreateInfo::builder()
         .enabled_extension_names(&extension_names)
         .queue_create_infos(&queue_infos)
@@ -452,6 +501,7 @@ where
         swapchain,
         images,
         image_views,
+        render_pass,
         framebuffers,
         extent: swapchain_create_info.image_extent,
         format: swapchain_create_info.image_format,
