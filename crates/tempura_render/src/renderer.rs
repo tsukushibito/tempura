@@ -4,22 +4,20 @@ use ash::{
     extensions::{self, ext::DebugUtils},
     vk, Device, Entry, Instance,
 };
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle};
 
 pub struct QueueFamilyIndices {
     graphics_family: Option<u32>,
     present_family: Option<u32>,
 }
 struct Swapchain {
-    surface: vk::SurfaceKHR,
-    swapchain: vk::SwapchainKHR,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    framebuffers: Vec<vk::Framebuffer>,
-    extent: vk::Extent2D,
-    format: vk::Format,
+    pub surface: vk::SurfaceKHR,
+    pub swapchain: vk::SwapchainKHR,
+    pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
+    pub framebuffers: Vec<vk::Framebuffer>,
+    pub extent: vk::Extent2D,
+    pub format: vk::Format,
 }
 
 pub struct Renderer {
@@ -31,16 +29,22 @@ pub struct Renderer {
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
     swapchain: Swapchain,
-    command_pool: vk::CommandPool,
-    command_buffers: Vec<vk::CommandBuffer>,
+    graphics_command_pool: vk::CommandPool,
+    graphics_command_buffers: Vec<vk::CommandBuffer>,
+    present_command_pool: Option<vk::CommandPool>,
+    present_command_buffers: Option<Vec<vk::CommandBuffer>>,
+    debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-pub trait Window: HasRawWindowHandle + HasRawDisplayHandle {
+pub trait Window: HasRawDisplayHandle + HasRawWindowHandle {
     fn window_size(&self) -> (u32, u32);
 }
 
 impl Renderer {
-    pub fn new<T: Window>(window: &T) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new<T>(window: &T) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        T: Window,
+    {
         let entry = unsafe { Entry::load()? };
         let instance = create_instance(&entry, &window.raw_display_handle())?;
         let surface = unsafe {
@@ -65,12 +69,44 @@ impl Renderer {
             &queue_family_indices,
             window,
         )?;
-        let command_pool =
-            Self::create_command_pool(&device, queue_family_indices.graphics_family.unwrap())?;
-        let command_buffers =
-            Self::allocate_command_buffers(&device, command_pool, swapchain.framebuffers.len())?;
+        let (graphics_command_pool, present_command_pool) =
+            create_command_pools(&device, &queue_family_indices)?;
+        let graphics_command_buffers = allocate_command_buffers(
+            &device,
+            graphics_command_pool,
+            swapchain.framebuffers.len() as u32,
+        )?;
+
+        let present_command_buffers = if let Some(command_pool) = present_command_pool {
+            Some(allocate_command_buffers(
+                &device,
+                command_pool,
+                swapchain.framebuffers.len() as u32,
+            )?)
+        } else {
+            None
+        };
+
+        let debug_utils_entry = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+        let debug_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+            )
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
+            .pfn_user_callback(Some(debug_callback))
+            .build();
+        let debug_messenger = unsafe {
+            debug_utils_entry.create_debug_utils_messenger(&debug_messenger_create_info, None)?
+        };
 
         Ok(Self {
+            entry,
             instance,
             device,
             physical_device,
@@ -78,9 +114,11 @@ impl Renderer {
             graphics_queue,
             present_queue,
             swapchain,
-            command_pool,
-            command_buffers,
-            // その他のリソース
+            graphics_command_pool,
+            graphics_command_buffers,
+            present_command_pool,
+            present_command_buffers,
+            debug_messenger,
         })
     }
 }
@@ -154,6 +192,7 @@ fn create_instance(
 
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
+        .enabled_layer_names(&layer_names)
         .enabled_extension_names(&extension_names)
         .flags(create_flags);
     let create_info = if cfg!(any(feature = "develop", feature = "debug")) {
@@ -275,7 +314,7 @@ fn get_device_queues(
     (graphics_queue, present_queue)
 }
 
-fn create_swapchain<T: Window>(
+fn create_swapchain<T>(
     entry: &Entry,
     instance: &Instance,
     device: &Device,
@@ -283,7 +322,10 @@ fn create_swapchain<T: Window>(
     surface: &vk::SurfaceKHR,
     queue_family_indices: &QueueFamilyIndices,
     window: &T,
-) -> Result<Swapchain, Box<dyn std::error::Error>> {
+) -> Result<Swapchain, Box<dyn std::error::Error>>
+where
+    T: Window,
+{
     let surface_entry = extensions::khr::Surface::new(entry, instance);
     let surface_format = choose_swapchain_format(&surface_entry, physical_device, surface)?;
 
@@ -424,7 +466,7 @@ fn choose_swapchain_format(
     let formats =
         unsafe { surface_entry.get_physical_device_surface_formats(*physical_device, *surface)? };
 
-    for format in formats {
+    for &format in &formats {
         if format.format == vk::Format::B8G8R8A8_SRGB
             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
         {
@@ -451,4 +493,79 @@ fn choose_swapchain_present_mode(
     }
 
     Ok(vk::PresentModeKHR::FIFO)
+}
+
+fn create_command_pool(
+    device: &Device,
+    queue_family_index: u32,
+) -> Result<vk::CommandPool, Box<dyn std::error::Error>> {
+    let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+        .queue_family_index(queue_family_index)
+        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+
+    let command_pool = unsafe { device.create_command_pool(&command_pool_create_info, None)? };
+    Ok(command_pool)
+}
+
+fn create_command_pools(
+    device: &Device,
+    queue_family_indices: &QueueFamilyIndices,
+) -> Result<(vk::CommandPool, Option<vk::CommandPool>), Box<dyn std::error::Error>> {
+    let graphics_family = queue_family_indices.graphics_family.unwrap();
+    let present_family = queue_family_indices.present_family.unwrap();
+
+    let graphics_command_pool = create_command_pool(device, graphics_family)?;
+
+    let present_command_pool = if graphics_family != present_family {
+        Some(create_command_pool(device, present_family)?)
+    } else {
+        None
+    };
+
+    Ok((graphics_command_pool, present_command_pool))
+}
+
+fn allocate_command_buffers(
+    device: &Device,
+    command_pool: vk::CommandPool,
+    buffer_count: u32,
+) -> Result<Vec<vk::CommandBuffer>, Box<dyn std::error::Error>> {
+    let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+        .command_pool(command_pool)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_buffer_count(buffer_count);
+
+    let command_buffers =
+        unsafe { device.allocate_command_buffers(&command_buffer_allocate_info)? };
+
+    Ok(command_buffers)
+}
+
+unsafe extern "system" fn debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = *p_callback_data;
+    let message_id_number = callback_data.message_id_number;
+
+    let message_id_name = if callback_data.p_message_id_name.is_null() {
+        std::borrow::Cow::from("")
+    } else {
+        std::ffi::CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
+    };
+
+    let message = if callback_data.p_message.is_null() {
+        std::borrow::Cow::from("")
+    } else {
+        std::ffi::CStr::from_ptr(callback_data.p_message).to_string_lossy()
+    };
+
+    println!(
+        "{:?}:\n{:?} [{} ({})] : {}\n",
+        message_severity, message_type, message_id_name, message_id_number, message,
+    );
+
+    vk::FALSE
 }
