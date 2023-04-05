@@ -1,0 +1,20 @@
+[package]
+name = "tempura"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["crates/*"]
+
+[dependencies]
+tempura_render = { path = "crates/tempura_render" }
+tempura_vulkan_render = { path = "crates/tempura_vulkan_render" }
+
+[dev-dependencies]
+tempura_vulkan_render = { path = "crates/tempura_vulkan_render", features = ["develop"] }
+raw-window-handle = "0.5"
+winit = "0.27"
+
+[[example]]
+name = "render"
+path = "examples/render/render.rs"
