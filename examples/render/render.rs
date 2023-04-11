@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use tempura_render::{Renderer, Window as TempuraWindow};
+use tempura_render::{Device, Renderer, Window as TempuraWindow};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -43,7 +43,8 @@ fn main() {
 
     let winit_window = WinitWindow { window };
 
-    let renderer = Rc::new(Renderer::new(&winit_window));
+    let device = Rc::new(Device::new(&winit_window).unwrap());
+    let renderer = Rc::new(Renderer::new(&device, &winit_window));
 
     event_loop.run_return(|event, _, control_flow| {
         control_flow.set_wait();
