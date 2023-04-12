@@ -1,8 +1,8 @@
 mod common;
-mod device;
+mod render_device;
 mod renderer;
 mod swapchain;
 
 pub use common::*;
-pub use device::*;
+pub use render_device::*;
 pub use renderer::*;

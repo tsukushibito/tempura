@@ -1,16 +1,16 @@
 use std::ffi::{c_char, CString};
 
-use ash::{extensions, Device as AshDevice};
+use ash::{extensions, Device};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
 use crate::common::QueueFamilyIndices;
 use crate::Window;
 
-pub struct Device {
+pub struct RenderDevice {
     pub(crate) entry: Entry,
     pub(crate) instance: Instance,
-    pub(crate) device: AshDevice,
+    pub(crate) device: Device,
     pub(crate) physical_device: vk::PhysicalDevice,
     pub(crate) queue_family_indices: QueueFamilyIndices,
     pub(crate) graphics_queue: vk::Queue,
@@ -18,7 +18,7 @@ pub struct Device {
     pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl Device {
+impl RenderDevice {
     pub fn new<T>(window: &T) -> Result<Self, Box<dyn std::error::Error>>
     where
         T: Window,
@@ -30,8 +30,7 @@ impl Device {
         let debug_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
                 vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING, // | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
             )
             .message_type(
                 vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
@@ -72,7 +71,7 @@ impl Device {
     }
 }
 
-impl Drop for Device {
+impl Drop for RenderDevice {
     fn drop(&mut self) {
         _ = unsafe { self.device.device_wait_idle() };
         let debug_utils_loader = extensions::ext::DebugUtils::new(&self.entry, &self.instance);
@@ -233,7 +232,7 @@ fn create_device(
     instance: &Instance,
     physical_device: &vk::PhysicalDevice,
     queue_family_indices: &QueueFamilyIndices,
-) -> Result<ash::Device, Box<dyn std::error::Error>> {
+) -> Result<Device, Box<dyn std::error::Error>> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
         // #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -267,7 +266,7 @@ fn create_device(
 }
 
 fn get_device_queues(
-    device: &AshDevice,
+    device: &Device,
     queue_family_indices: &QueueFamilyIndices,
 ) -> (vk::Queue, vk::Queue) {
     let graphics_queue =

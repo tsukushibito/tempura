@@ -1,8 +1,11 @@
+use std::rc::Rc;
+
 use ash::{extensions, vk};
 
-use crate::{common::Window, Device};
+use crate::{common::Window, RenderDevice};
 
 pub(crate) struct Swapchain {
+    render_device: Rc<RenderDevice>,
     pub surface: vk::SurfaceKHR,
     pub swapchain: vk::SwapchainKHR,
     pub images: Vec<vk::Image>,
@@ -15,23 +18,27 @@ pub(crate) struct Swapchain {
 
 impl Swapchain {
     pub fn new<T>(
-        device: &Device,
+        render_device: &Rc<RenderDevice>,
         surface: &vk::SurfaceKHR,
         window: &T,
     ) -> Result<Swapchain, Box<dyn std::error::Error>>
     where
         T: Window,
     {
-        let surface_loader = extensions::khr::Surface::new(&device.entry, &device.instance);
+        let surface_loader =
+            extensions::khr::Surface::new(&render_device.entry, &render_device.instance);
         let surface_format =
-            choose_swapchain_format(&surface_loader, &device.physical_device, surface)?;
+            choose_swapchain_format(&surface_loader, &render_device.physical_device, surface)?;
 
-        let present_mode =
-            choose_swapchain_present_mode(&surface_loader, &device.physical_device, surface)?;
+        let present_mode = choose_swapchain_present_mode(
+            &surface_loader,
+            &render_device.physical_device,
+            surface,
+        )?;
 
         let surface_capabilities = unsafe {
             surface_loader
-                .get_physical_device_surface_capabilities(device.physical_device, *surface)?
+                .get_physical_device_surface_capabilities(render_device.physical_device, *surface)?
         };
         let image_count = std::cmp::min(
             surface_capabilities.min_image_count + 1,
@@ -58,8 +65,8 @@ impl Swapchain {
             .clipped(true);
 
         let queue_family_indices = [
-            device.queue_family_indices.graphics_family.unwrap(),
-            device.queue_family_indices.present_family.unwrap(),
+            render_device.queue_family_indices.graphics_family.unwrap(),
+            render_device.queue_family_indices.present_family.unwrap(),
         ];
 
         if queue_family_indices[0] != queue_family_indices[1] {
@@ -74,7 +81,7 @@ impl Swapchain {
         let swapchain_create_info = swapchain_create_info.build();
 
         let swapchain_loader =
-            ash::extensions::khr::Swapchain::new(&device.instance, &device.device);
+            ash::extensions::khr::Swapchain::new(&render_device.instance, &render_device.device);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
         let image_views = images
@@ -98,7 +105,7 @@ impl Swapchain {
                     })
                     .image(image)
                     .build();
-                unsafe { device.device.create_image_view(&info, None).unwrap() }
+                unsafe { render_device.device.create_image_view(&info, None).unwrap() }
             })
             .collect::<Vec<vk::ImageView>>();
 
@@ -128,7 +135,7 @@ impl Swapchain {
             .build();
 
         let render_pass = unsafe {
-            device
+            render_device
                 .device
                 .create_render_pass(&render_pass_create_info, None)?
         };
@@ -144,7 +151,7 @@ impl Swapchain {
                     .layers(1)
                     .build();
                 unsafe {
-                    device
+                    render_device
                         .device
                         .create_framebuffer(&framebuffer_create_info, None)
                         .unwrap()
@@ -153,6 +160,7 @@ impl Swapchain {
             .collect::<Vec<vk::Framebuffer>>();
 
         Ok(Self {
+            render_device: render_device.clone(),
             surface: *surface,
             swapchain,
             images,
@@ -162,6 +170,51 @@ impl Swapchain {
             extent: swapchain_create_info.image_extent,
             format: swapchain_create_info.image_format,
         })
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        unsafe {
+            self.render_device
+                .device
+                .device_wait_idle()
+                .expect("device_wait_idle error")
+        };
+
+        let swapchain_loader = ash::extensions::khr::Swapchain::new(
+            &self.render_device.instance,
+            &self.render_device.device,
+        );
+        unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
+
+        for &framebuffer in &self.framebuffers {
+            unsafe {
+                self.render_device
+                    .device
+                    .destroy_framebuffer(framebuffer, None)
+            }
+        }
+
+        unsafe {
+            self.render_device
+                .device
+                .destroy_render_pass(self.render_pass, None)
+        };
+
+        for &image_view in &self.image_views {
+            unsafe {
+                self.render_device
+                    .device
+                    .destroy_image_view(image_view, None)
+            };
+        }
+
+        let surface_loader = ash::extensions::khr::Surface::new(
+            &self.render_device.entry,
+            &self.render_device.instance,
+        );
+        unsafe { surface_loader.destroy_surface(self.surface, None) };
     }
 }
 
