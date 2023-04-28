@@ -2,52 +2,47 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::RenderDevice;
-use crate::{
-    common::{QueueFamilyIndices, Window},
-    swapchain::Swapchain,
-};
+use tempura_graphics::{CommandPool, GraphicsDevice, QueueFamily, Swapchain, Window};
+
+struct FrameData {
+    image_available_semaphore: vk::Semaphore,
+    render_finished_semaphore: vk::Semaphore,
+    in_flight_fence: vk::Fence,
+    image_index: u32,
+    graphics_command_pool: CommandPool,
+    graphics_command_buffer: vk::CommandBuffer,
+    present_command_pool: Option<CommandPool>,
+    present_command_buffer: Option<vk::CommandBuffer>,
+}
 
 pub struct Renderer {
-    render_device: Rc<RenderDevice>,
+    render_device: Rc<GraphicsDevice>,
     swapchain: Swapchain,
-    graphics_command_pool: vk::CommandPool,
-    graphics_command_buffers: Vec<vk::CommandBuffer>,
-    present_command_pool: Option<vk::CommandPool>,
-    present_command_buffers: Option<Vec<vk::CommandBuffer>>,
+    frame_datas: Vec<FrameData>,
 }
 
 impl Renderer {
     pub fn new<T>(
-        render_device: &Rc<RenderDevice>,
+        render_device: &Rc<GraphicsDevice>,
         window: &T,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         T: Window,
     {
-        let surface = unsafe {
-            ash_window::create_surface(
-                &render_device.entry,
-                &render_device.instance,
-                window.raw_display_handle(),
-                window.raw_window_handle(),
-                None,
-            )?
-        };
-        let swapchain = Swapchain::new(&render_device, &surface, window)?;
-        let (graphics_command_pool, present_command_pool) =
-            create_command_pools(&render_device, &render_device.queue_family_indices)?;
-        let graphics_command_buffers = allocate_command_buffers(
-            &render_device,
-            graphics_command_pool,
-            swapchain.framebuffers.len() as u32,
+        let swapchain = render_device.create_swapchain(window)?;
+        let graphics_command_pool = render_device
+            .create_command_pool(QueueFamily::Graphics)?
+            .unwrap();
+        let present_command_pool = render_device.create_command_pool(QueueFamily::Present)?;
+        let graphics_command_buffers = graphics_command_pool.allocate_command_buffers(
+            vk::CommandBufferLevel::PRIMARY,
+            swapchain.framebuffer_count() as u32,
         )?;
 
-        let present_command_buffers = if let Some(command_pool) = present_command_pool {
-            Some(allocate_command_buffers(
-                &render_device,
-                command_pool,
-                swapchain.framebuffers.len() as u32,
+        let present_command_buffers = if let Some(present_command_pool) = present_command_pool {
+            Some(present_command_pool.allocate_command_buffers(
+                vk::CommandBufferLevel::PRIMARY,
+                swapchain.framebuffer_count() as u32,
             )?)
         } else {
             None
@@ -56,9 +51,9 @@ impl Renderer {
         Ok(Self {
             render_device: render_device.clone(),
             swapchain,
-            graphics_command_pool,
+            graphics_command_pool: Rc::new(graphics_command_pool),
             graphics_command_buffers,
-            present_command_pool,
+            present_command_pool: Rc::new(present_command_pool.unwrap()),
             present_command_buffers,
         })
     }

@@ -1,15 +1,17 @@
 use std::ffi::{c_char, CString};
+use std::rc::Rc;
 
 use ash::{extensions, Device};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use crate::common::QueueFamilyIndices;
-use crate::Window;
+use crate::command_pool::{CommandPool, QueueFamily};
+use crate::common::{QueueFamilyIndices, Window};
+use crate::swapchain::Swapchain;
 
-pub struct RenderDevice {
-    pub(crate) entry: Entry,
-    pub(crate) instance: Instance,
+pub struct GraphicsDevice {
+    entry: Entry,
+    instance: Instance,
     pub(crate) device: Device,
     pub(crate) physical_device: vk::PhysicalDevice,
     pub(crate) queue_family_indices: QueueFamilyIndices,
@@ -18,7 +20,7 @@ pub struct RenderDevice {
     pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl RenderDevice {
+impl GraphicsDevice {
     pub fn new<T>(window: &T) -> Result<Self, Box<dyn std::error::Error>>
     where
         T: Window,
@@ -43,7 +45,7 @@ impl RenderDevice {
             debug_utils_loader.create_debug_utils_messenger(&debug_messenger_create_info, None)?
         };
 
-        let surface = unsafe {
+        let dummy_surface = unsafe {
             ash_window::create_surface(
                 &entry,
                 &instance,
@@ -53,9 +55,10 @@ impl RenderDevice {
             )?
         };
         let (physical_device, queue_family_indices) =
-            pick_physical_device_and_queue_family(&entry, &instance, &surface)?;
+            pick_physical_device_and_queue_family(&entry, &instance, &dummy_surface)?;
         let surface_loader = extensions::khr::Surface::new(&entry, &instance);
-        unsafe { surface_loader.destroy_surface(surface, None) };
+        unsafe { surface_loader.destroy_surface(dummy_surface, None) };
+
         let device = create_device(&instance, &physical_device, &queue_family_indices)?;
         let (graphics_queue, present_queue) = get_device_queues(&device, &queue_family_indices);
         Ok(Self {
@@ -69,9 +72,57 @@ impl RenderDevice {
             debug_messenger,
         })
     }
+
+    pub fn create_swapchain(
+        self: &Rc<Self>,
+        window: &impl Window,
+    ) -> Result<Swapchain, Box<dyn std::error::Error>> {
+        let surface = self.create_surface(window)?;
+        Swapchain::new(self, &surface, window)
+    }
+
+    pub fn create_command_pool(
+        self: &Rc<Self>,
+        queue_family: QueueFamily,
+    ) -> Result<Option<CommandPool>, Box<dyn std::error::Error>> {
+        let queue_family_index = match queue_family {
+            QueueFamily::Graphics => self.queue_family_indices.graphics_family,
+            QueueFamily::Present => self.queue_family_indices.present_family,
+        };
+        if let Some(queue_family_index) = queue_family_index {
+            Ok(Some(CommandPool::new(self, queue_family_index)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn create_surface(
+        &self,
+        window: &impl Window,
+    ) -> Result<vk::SurfaceKHR, Box<dyn std::error::Error>> {
+        let surface = unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )?
+        };
+
+        Ok(surface)
+    }
+
+    pub(crate) fn surface_loader(&self) -> ash::extensions::khr::Surface {
+        extensions::khr::Surface::new(&self.entry, &self.instance)
+    }
+
+    pub(crate) fn swapchain_loader(&self) -> ash::extensions::khr::Swapchain {
+        extensions::khr::Swapchain::new(&self.instance, &self.device)
+    }
 }
 
-impl Drop for RenderDevice {
+impl Drop for GraphicsDevice {
     fn drop(&mut self) {
         _ = unsafe { self.device.device_wait_idle() };
         let debug_utils_loader = extensions::ext::DebugUtils::new(&self.entry, &self.instance);
