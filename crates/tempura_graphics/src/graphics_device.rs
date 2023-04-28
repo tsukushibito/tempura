@@ -12,12 +12,12 @@ use crate::swapchain::Swapchain;
 pub struct GraphicsDevice {
     entry: Entry,
     instance: Instance,
-    pub(crate) device: Device,
-    pub(crate) physical_device: vk::PhysicalDevice,
-    pub(crate) queue_family_indices: QueueFamilyIndices,
-    pub(crate) graphics_queue: vk::Queue,
-    pub(crate) present_queue: vk::Queue,
-    pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
+    device: Device,
+    physical_device: vk::PhysicalDevice,
+    queue_family_indices: QueueFamilyIndices,
+    graphics_queue: vk::Queue,
+    present_queue: vk::Queue,
+    debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl GraphicsDevice {
@@ -76,24 +76,20 @@ impl GraphicsDevice {
     pub fn create_swapchain(
         self: &Rc<Self>,
         window: &impl Window,
-    ) -> Result<Swapchain, Box<dyn std::error::Error>> {
+    ) -> Result<Rc<Swapchain>, Box<dyn std::error::Error>> {
         let surface = self.create_surface(window)?;
-        Swapchain::new(self, &surface, window)
+        Ok(Rc::new(Swapchain::new(self, &surface, window)?))
     }
 
     pub fn create_command_pool(
         self: &Rc<Self>,
         queue_family: QueueFamily,
-    ) -> Result<Option<CommandPool>, Box<dyn std::error::Error>> {
+    ) -> Result<Rc<CommandPool>, Box<dyn std::error::Error>> {
         let queue_family_index = match queue_family {
             QueueFamily::Graphics => self.queue_family_indices.graphics_family,
             QueueFamily::Present => self.queue_family_indices.present_family,
         };
-        if let Some(queue_family_index) = queue_family_index {
-            Ok(Some(CommandPool::new(self, queue_family_index)?))
-        } else {
-            Ok(None)
-        }
+        Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
     }
 
     pub(crate) fn create_surface(
@@ -111,6 +107,18 @@ impl GraphicsDevice {
         };
 
         Ok(surface)
+    }
+
+    pub(crate) fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub(crate) fn physical_device(&self) -> vk::PhysicalDevice {
+        self.physical_device
+    }
+
+    pub(crate) fn queue_family_indices(&self) -> &QueueFamilyIndices {
+        &self.queue_family_indices
     }
 
     pub(crate) fn surface_loader(&self) -> ash::extensions::khr::Surface {
@@ -271,8 +279,8 @@ fn find_queue_family_indices(
 
     if graphics_family.is_some() && present_family.is_some() {
         Some(QueueFamilyIndices {
-            graphics_family,
-            present_family,
+            graphics_family: graphics_family.unwrap(),
+            present_family: present_family.unwrap(),
         })
     } else {
         None
@@ -291,17 +299,17 @@ fn create_device(
     ];
 
     let queue_priorities = [1.0];
-    let graphics_family_index = queue_family_indices.graphics_family.unwrap();
+    let graphics_family_index = queue_family_indices.graphics_family;
     let graphics_queue_create_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(graphics_family_index)
         .queue_priorities(&queue_priorities)
         .build();
     let mut queue_infos = vec![graphics_queue_create_info];
 
-    let present_family_index = queue_family_indices.present_family.unwrap();
+    let present_family_index = queue_family_indices.present_family;
     if present_family_index != graphics_family_index {
         let present_queue_create_info = vk::DeviceQueueCreateInfo::builder()
-            .queue_family_index(queue_family_indices.present_family.unwrap())
+            .queue_family_index(queue_family_indices.present_family)
             .queue_priorities(&queue_priorities)
             .build();
         queue_infos.push(present_queue_create_info);
@@ -321,10 +329,9 @@ fn get_device_queues(
     queue_family_indices: &QueueFamilyIndices,
 ) -> (vk::Queue, vk::Queue) {
     let graphics_queue =
-        unsafe { device.get_device_queue(queue_family_indices.graphics_family.unwrap(), 0) };
+        unsafe { device.get_device_queue(queue_family_indices.graphics_family, 0) };
 
-    let present_queue =
-        unsafe { device.get_device_queue(queue_family_indices.present_family.unwrap(), 0) };
+    let present_queue = unsafe { device.get_device_queue(queue_family_indices.present_family, 0) };
 
     (graphics_queue, present_queue)
 }

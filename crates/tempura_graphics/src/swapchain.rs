@@ -2,18 +2,32 @@ use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use crate::{common::Window, graphics_device::GraphicsDevice};
+use crate::command_buffer::CommandBuffer;
+use crate::command_pool::CommandPool;
+use crate::common::Window;
+use crate::graphics_device::GraphicsDevice;
+
+struct FrameData {
+    image_available_semaphore: vk::Semaphore,
+    render_finished_semaphore: vk::Semaphore,
+    in_flight_fence: vk::Fence,
+    image_index: u32,
+    graphics_command_pool: Rc<CommandPool>,
+    graphics_command_buffer: Rc<CommandBuffer>,
+    present_command_pool: Rc<CommandPool>,
+    present_command_buffer: Rc<CommandBuffer>,
+}
 
 pub struct Swapchain {
     graphics_device: Rc<GraphicsDevice>,
-    pub(crate) surface: vk::SurfaceKHR,
-    pub(crate) swapchain: vk::SwapchainKHR,
-    pub(crate) images: Vec<vk::Image>,
-    pub(crate) image_views: Vec<vk::ImageView>,
-    pub(crate) render_pass: vk::RenderPass,
-    pub(crate) framebuffers: Vec<vk::Framebuffer>,
-    pub(crate) extent: vk::Extent2D,
-    pub(crate) format: vk::Format,
+    surface: vk::SurfaceKHR,
+    swapchain: vk::SwapchainKHR,
+    images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
+    render_pass: vk::RenderPass,
+    framebuffers: Vec<vk::Framebuffer>,
+    extent: vk::Extent2D,
+    format: vk::Format,
 }
 
 impl Swapchain {
@@ -26,20 +40,14 @@ impl Swapchain {
         T: Window,
     {
         let surface_loader = graphics_device.surface_loader();
-        let surface_format =
-            choose_swapchain_format(&surface_loader, &graphics_device.physical_device, surface)?;
+        let physical_device = graphics_device.physical_device();
+        let surface_format = choose_swapchain_format(&surface_loader, &physical_device, surface)?;
 
-        let present_mode = choose_swapchain_present_mode(
-            &surface_loader,
-            &graphics_device.physical_device,
-            surface,
-        )?;
+        let present_mode =
+            choose_swapchain_present_mode(&surface_loader, &physical_device, surface)?;
 
         let surface_capabilities = unsafe {
-            surface_loader.get_physical_device_surface_capabilities(
-                graphics_device.physical_device,
-                *surface,
-            )?
+            surface_loader.get_physical_device_surface_capabilities(physical_device, *surface)?
         };
         let image_count = std::cmp::min(
             surface_capabilities.min_image_count + 1,
@@ -65,12 +73,10 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true);
 
+        let queue_family_indices = graphics_device.queue_family_indices();
         let queue_family_indices = [
-            graphics_device
-                .queue_family_indices
-                .graphics_family
-                .unwrap(),
-            graphics_device.queue_family_indices.present_family.unwrap(),
+            queue_family_indices.graphics_family,
+            queue_family_indices.present_family,
         ];
 
         if queue_family_indices[0] != queue_family_indices[1] {
@@ -84,6 +90,7 @@ impl Swapchain {
 
         let swapchain_create_info = swapchain_create_info.build();
 
+        let device = graphics_device.device();
         let swapchain_loader = graphics_device.swapchain_loader();
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
@@ -108,12 +115,7 @@ impl Swapchain {
                     })
                     .image(image)
                     .build();
-                unsafe {
-                    graphics_device
-                        .device
-                        .create_image_view(&info, None)
-                        .unwrap()
-                }
+                unsafe { device.create_image_view(&info, None).unwrap() }
             })
             .collect::<Vec<vk::ImageView>>();
 
@@ -142,11 +144,7 @@ impl Swapchain {
             .subpasses(&[subpass_desc])
             .build();
 
-        let render_pass = unsafe {
-            graphics_device
-                .device
-                .create_render_pass(&render_pass_create_info, None)?
-        };
+        let render_pass = unsafe { device.create_render_pass(&render_pass_create_info, None)? };
 
         let framebuffers = image_views
             .iter()
@@ -159,8 +157,7 @@ impl Swapchain {
                     .layers(1)
                     .build();
                 unsafe {
-                    graphics_device
-                        .device
+                    device
                         .create_framebuffer(&framebuffer_create_info, None)
                         .unwrap()
                 }
@@ -183,40 +180,37 @@ impl Swapchain {
     pub fn framebuffer_count(&self) -> usize {
         self.framebuffers.len()
     }
+
+    pub fn acquire_next_image(&self) -> Result<u32, Box<dyn std::error::Error>> {
+        let (index, _) = unsafe {
+            self.graphics_device.swapchain_loader().acquire_next_image(
+                self.swapchain,
+                1000 * 1000,
+                vk::Semaphore::null(),
+                vk::Fence::null(),
+            )?
+        };
+
+        Ok(index)
+    }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        unsafe {
-            self.graphics_device
-                .device
-                .device_wait_idle()
-                .expect("device_wait_idle error")
-        };
+        let device = self.graphics_device.device();
+        unsafe { device.device_wait_idle().expect("device_wait_idle error") };
 
         let swapchain_loader = self.graphics_device.swapchain_loader();
         unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
 
         for &framebuffer in &self.framebuffers {
-            unsafe {
-                self.graphics_device
-                    .device
-                    .destroy_framebuffer(framebuffer, None)
-            }
+            unsafe { device.destroy_framebuffer(framebuffer, None) }
         }
 
-        unsafe {
-            self.graphics_device
-                .device
-                .destroy_render_pass(self.render_pass, None)
-        };
+        unsafe { device.destroy_render_pass(self.render_pass, None) };
 
         for &image_view in &self.image_views {
-            unsafe {
-                self.graphics_device
-                    .device
-                    .destroy_image_view(image_view, None)
-            };
+            unsafe { device.destroy_image_view(image_view, None) };
         }
 
         let surface_loader = self.graphics_device.surface_loader();

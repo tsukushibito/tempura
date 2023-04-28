@@ -8,6 +8,7 @@ members = ["crates/*"]
 
 [dependencies]
 tempura_render = { path = "crates/tempura_render" }
+tempura_graphics = { path = "crates/tempura_graphics" }
 
 [dev-dependencies]
 raw-window-handle = "0.5"

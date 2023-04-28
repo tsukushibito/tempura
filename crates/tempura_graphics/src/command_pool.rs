@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
+use crate::command_buffer::CommandBuffer;
 use crate::graphics_device::GraphicsDevice;
 
 pub enum QueueFamily {
@@ -15,7 +16,7 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub fn new(
+    pub(crate) fn new(
         graphics_device: &Rc<GraphicsDevice>,
         queue_family_index: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -25,7 +26,7 @@ impl CommandPool {
 
         let command_pool = unsafe {
             graphics_device
-                .device
+                .device()
                 .create_command_pool(&command_pool_create_info, None)?
         };
 
@@ -35,11 +36,15 @@ impl CommandPool {
         })
     }
 
+    pub(crate) fn command_pool(&self) -> vk::CommandPool {
+        self.command_pool
+    }
+
     pub fn allocate_command_buffers(
-        &self,
+        self: &Rc<Self>,
         level: vk::CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Vec<vk::CommandBuffer>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Rc<CommandBuffer>>, Box<dyn std::error::Error>> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(level)
@@ -47,9 +52,20 @@ impl CommandPool {
 
         let command_buffers = unsafe {
             self.graphics_device
-                .device
+                .device()
                 .allocate_command_buffers(&command_buffer_allocate_info)?
         };
+
+        let command_buffers = command_buffers
+            .iter()
+            .map(|&command_buffer| {
+                Rc::new(CommandBuffer::new(
+                    &self.graphics_device,
+                    self,
+                    command_buffer,
+                ))
+            })
+            .collect::<Vec<Rc<CommandBuffer>>>();
 
         Ok(command_buffers)
     }
@@ -57,10 +73,10 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        unsafe { self.graphics_device.device.device_wait_idle().unwrap() };
+        unsafe { self.graphics_device.device().device_wait_idle().unwrap() };
         unsafe {
             self.graphics_device
-                .device
+                .device()
                 .destroy_command_pool(self.command_pool, None)
         };
     }

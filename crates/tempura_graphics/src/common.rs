@@ -5,6 +5,6 @@ pub trait Window: HasRawDisplayHandle + HasRawWindowHandle {
 }
 
 pub struct QueueFamilyIndices {
-    pub graphics_family: Option<u32>,
-    pub present_family: Option<u32>,
+    pub graphics_family: u32,
+    pub present_family: u32,
 }
