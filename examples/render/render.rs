@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tempura_render::Renderer;
-use tempura_vulkan::GraphicsDevice;
+use tempura_vulkan::VulkanDevice;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -44,7 +44,7 @@ fn main() {
 
     let winit_window = WinitWindow { window };
 
-    let device = Rc::new(GraphicsDevice::new(&winit_window).unwrap());
+    let device = Rc::new(VulkanDevice::new(&winit_window).unwrap());
     let renderer = Rc::new(Renderer::new(&device, &winit_window).unwrap());
     renderer.render();
 

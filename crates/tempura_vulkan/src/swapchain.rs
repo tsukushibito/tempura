@@ -5,7 +5,7 @@ use ash::{extensions, vk};
 use crate::command_buffer::CommandBuffer;
 use crate::command_pool::CommandPool;
 use crate::common::Window;
-use crate::graphics_device::GraphicsDevice;
+use crate::vulkan_device::VulkanDevice;
 
 pub struct FrameData {
     image_available_semaphore: vk::Semaphore,
@@ -20,7 +20,7 @@ pub struct FrameData {
 }
 
 pub struct Swapchain {
-    graphics_device: Rc<GraphicsDevice>,
+    vulkan_device: Rc<VulkanDevice>,
     surface: vk::SurfaceKHR,
     swapchain: vk::SwapchainKHR,
     image_format: vk::Format,
@@ -32,15 +32,15 @@ pub struct Swapchain {
 
 impl Swapchain {
     pub fn new<T>(
-        graphics_device: &Rc<GraphicsDevice>,
+        vulkan_device: &Rc<VulkanDevice>,
         surface: &vk::SurfaceKHR,
         window: &T,
     ) -> Result<Swapchain, Box<dyn std::error::Error>>
     where
         T: Window,
     {
-        let surface_loader = graphics_device.surface_loader();
-        let physical_device = graphics_device.physical_device();
+        let surface_loader = vulkan_device.surface_loader();
+        let physical_device = vulkan_device.physical_device();
         let surface_format = choose_swapchain_format(&surface_loader, &physical_device, surface)?;
 
         let present_mode =
@@ -73,7 +73,7 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true);
 
-        let queue_family_indices = graphics_device.queue_family_indices();
+        let queue_family_indices = vulkan_device.queue_family_indices();
         let queue_family_indices = [
             queue_family_indices.graphics_family,
             queue_family_indices.present_family,
@@ -90,8 +90,8 @@ impl Swapchain {
 
         let swapchain_create_info = swapchain_create_info.build();
 
-        let device = graphics_device.device();
-        let swapchain_loader = graphics_device.swapchain_loader();
+        let device = vulkan_device.device();
+        let swapchain_loader = vulkan_device.swapchain_loader();
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
         let image_views = images
@@ -124,12 +124,12 @@ impl Swapchain {
             .zip(image_views.iter())
             .map(|(&image, &image_view)| {
                 let graphics_command_pool =
-                    Rc::new(CommandPool::new(graphics_device, queue_family_indices[0]).unwrap());
+                    Rc::new(CommandPool::new(vulkan_device, queue_family_indices[0]).unwrap());
                 let graphics_command_buffers = graphics_command_pool
                     .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
                     .unwrap();
                 let present_command_pool =
-                    Rc::new(CommandPool::new(graphics_device, queue_family_indices[1]).unwrap());
+                    Rc::new(CommandPool::new(vulkan_device, queue_family_indices[1]).unwrap());
                 let present_command_buffers = present_command_pool
                     .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
                     .unwrap();
@@ -149,7 +149,7 @@ impl Swapchain {
             .collect::<Vec<FrameData>>();
 
         Ok(Self {
-            graphics_device: graphics_device.clone(),
+            vulkan_device: vulkan_device.clone(),
             surface: *surface,
             swapchain,
             image_extent: surface_resolution,
@@ -182,7 +182,7 @@ impl Swapchain {
 
     pub fn acquire_next_image(&self) -> Result<u32, Box<dyn std::error::Error>> {
         let (index, _) = unsafe {
-            self.graphics_device.swapchain_loader().acquire_next_image(
+            self.vulkan_device.swapchain_loader().acquire_next_image(
                 self.swapchain,
                 1000 * 1000,
                 vk::Semaphore::null(),
@@ -196,10 +196,10 @@ impl Swapchain {
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        let device = self.graphics_device.device();
+        let device = self.vulkan_device.device();
         unsafe { device.device_wait_idle().expect("device_wait_idle error") };
 
-        let swapchain_loader = self.graphics_device.swapchain_loader();
+        let swapchain_loader = self.vulkan_device.swapchain_loader();
         unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
 
         for frame_data in &self.frame_datas {
@@ -209,7 +209,7 @@ impl Drop for Swapchain {
             unsafe { device.destroy_image_view(frame_data.image_view, None) };
         }
 
-        let surface_loader = self.graphics_device.surface_loader();
+        let surface_loader = self.vulkan_device.surface_loader();
         unsafe { surface_loader.destroy_surface(self.surface, None) };
     }
 }

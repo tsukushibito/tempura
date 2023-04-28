@@ -3,22 +3,22 @@ use std::rc::Rc;
 use ash::vk;
 
 use crate::command_pool::CommandPool;
-use crate::graphics_device::GraphicsDevice;
+use crate::vulkan_device::VulkanDevice;
 
 pub struct CommandBuffer {
-    graphics_device: Rc<GraphicsDevice>,
+    vulkan_device: Rc<VulkanDevice>,
     command_pool: Rc<CommandPool>,
     command_buffer: vk::CommandBuffer,
 }
 
 impl CommandBuffer {
     pub(crate) fn new(
-        graphics_device: &Rc<GraphicsDevice>,
+        vulkan_device: &Rc<VulkanDevice>,
         command_pool: &Rc<CommandPool>,
         command_buffer: vk::CommandBuffer,
     ) -> Self {
         Self {
-            graphics_device: graphics_device.clone(),
+            vulkan_device: vulkan_device.clone(),
             command_pool: command_pool.clone(),
             command_buffer,
         }
@@ -28,7 +28,7 @@ impl CommandBuffer {
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
         unsafe {
-            self.graphics_device
+            self.vulkan_device
                 .device()
                 .free_command_buffers(self.command_pool.command_pool(), &[self.command_buffer]);
         }

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use tempura_vulkan::{CommandPool, GraphicsDevice, QueueFamily, Swapchain, Window};
+use tempura_vulkan::{CommandPool, QueueFamily, Swapchain, VulkanDevice, Window};
 
 struct FrameData {
     image_available_semaphore: vk::Semaphore,
@@ -16,14 +16,14 @@ struct FrameData {
 }
 
 pub struct Renderer {
-    graphics_device: Rc<GraphicsDevice>,
+    vulkan_device: Rc<VulkanDevice>,
     swapchain: Rc<Swapchain>,
     frame_datas: Vec<FrameData>,
 }
 
 impl Renderer {
     pub fn new<T>(
-        render_device: &Rc<GraphicsDevice>,
+        render_device: &Rc<VulkanDevice>,
         window: &T,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -35,7 +35,7 @@ impl Renderer {
         let present_command_pool = render_device.create_command_pool(QueueFamily::Present)?;
 
         Ok(Self {
-            graphics_device: render_device.clone(),
+            vulkan_device: render_device.clone(),
             swapchain,
             frame_datas: vec![],
         })

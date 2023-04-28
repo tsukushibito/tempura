@@ -7,9 +7,11 @@ use raw_window_handle::RawDisplayHandle;
 
 use crate::command_pool::{CommandPool, QueueFamily};
 use crate::common::{QueueFamilyIndices, Window};
+use crate::fence::Fence;
+use crate::semaphore::Semaphore;
 use crate::swapchain::Swapchain;
 
-pub struct GraphicsDevice {
+pub struct VulkanDevice {
     entry: Entry,
     instance: Instance,
     device: Device,
@@ -20,7 +22,7 @@ pub struct GraphicsDevice {
     debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl GraphicsDevice {
+impl VulkanDevice {
     pub fn new<T>(window: &T) -> Result<Self, Box<dyn std::error::Error>>
     where
         T: Window,
@@ -92,6 +94,14 @@ impl GraphicsDevice {
         Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
     }
 
+    pub fn create_fence(self: &Rc<Self>) -> Result<Rc<Fence>, Box<dyn std::error::Error>> {
+        Ok(Rc::new(Fence::new(self)?))
+    }
+
+    pub fn create_semaphore(self: &Rc<Self>) -> Result<Rc<Semaphore>, Box<dyn std::error::Error>> {
+        Ok(Rc::new(Semaphore::new(self)?))
+    }
+
     pub(crate) fn create_surface(
         &self,
         window: &impl Window,
@@ -130,7 +140,7 @@ impl GraphicsDevice {
     }
 }
 
-impl Drop for GraphicsDevice {
+impl Drop for VulkanDevice {
     fn drop(&mut self) {
         _ = unsafe { self.device.device_wait_idle() };
         let debug_utils_loader = extensions::ext::DebugUtils::new(&self.entry, &self.instance);

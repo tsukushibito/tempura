@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ash::vk;
 
 use crate::command_buffer::CommandBuffer;
-use crate::graphics_device::GraphicsDevice;
+use crate::vulkan_device::VulkanDevice;
 
 pub enum QueueFamily {
     Graphics,
@@ -11,13 +11,13 @@ pub enum QueueFamily {
 }
 
 pub struct CommandPool {
-    graphics_device: Rc<GraphicsDevice>,
+    vulkan_device: Rc<VulkanDevice>,
     command_pool: vk::CommandPool,
 }
 
 impl CommandPool {
     pub(crate) fn new(
-        graphics_device: &Rc<GraphicsDevice>,
+        vulkan_device: &Rc<VulkanDevice>,
         queue_family_index: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
@@ -25,13 +25,13 @@ impl CommandPool {
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
         let command_pool = unsafe {
-            graphics_device
+            vulkan_device
                 .device()
                 .create_command_pool(&command_pool_create_info, None)?
         };
 
         Ok(Self {
-            graphics_device: graphics_device.clone(),
+            vulkan_device: vulkan_device.clone(),
             command_pool,
         })
     }
@@ -51,7 +51,7 @@ impl CommandPool {
             .command_buffer_count(command_buffer_count);
 
         let command_buffers = unsafe {
-            self.graphics_device
+            self.vulkan_device
                 .device()
                 .allocate_command_buffers(&command_buffer_allocate_info)?
         };
@@ -60,7 +60,7 @@ impl CommandPool {
             .iter()
             .map(|&command_buffer| {
                 Rc::new(CommandBuffer::new(
-                    &self.graphics_device,
+                    &self.vulkan_device,
                     self,
                     command_buffer,
                 ))
@@ -73,9 +73,9 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        unsafe { self.graphics_device.device().device_wait_idle().unwrap() };
+        unsafe { self.vulkan_device.device().device_wait_idle().unwrap() };
         unsafe {
-            self.graphics_device
+            self.vulkan_device
                 .device()
                 .destroy_command_pool(self.command_pool, None)
         };
