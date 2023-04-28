@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use tempura_graphics::{CommandPool, GraphicsDevice, QueueFamily, Swapchain, Window};
+use tempura_vulkan::{CommandPool, GraphicsDevice, QueueFamily, Swapchain, Window};
 
 struct FrameData {
     image_available_semaphore: vk::Semaphore,

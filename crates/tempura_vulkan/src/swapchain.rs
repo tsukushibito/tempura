@@ -7,11 +7,12 @@ use crate::command_pool::CommandPool;
 use crate::common::Window;
 use crate::graphics_device::GraphicsDevice;
 
-struct FrameData {
+pub struct FrameData {
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
     in_flight_fence: vk::Fence,
-    image_index: u32,
+    image: vk::Image,
+    image_view: vk::ImageView,
     graphics_command_pool: Rc<CommandPool>,
     graphics_command_buffer: Rc<CommandBuffer>,
     present_command_pool: Rc<CommandPool>,
@@ -22,12 +23,11 @@ pub struct Swapchain {
     graphics_device: Rc<GraphicsDevice>,
     surface: vk::SurfaceKHR,
     swapchain: vk::SwapchainKHR,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    render_pass: vk::RenderPass,
-    framebuffers: Vec<vk::Framebuffer>,
-    extent: vk::Extent2D,
-    format: vk::Format,
+    image_format: vk::Format,
+    image_color_space: vk::ColorSpaceKHR,
+    image_extent: vk::Extent2D,
+    present_mode: vk::PresentModeKHR,
+    frame_datas: Vec<FrameData>,
 }
 
 impl Swapchain {
@@ -65,7 +65,7 @@ impl Swapchain {
             .min_image_count(image_count)
             .image_format(surface_format.format)
             .image_color_space(surface_format.color_space)
-            .image_extent(surface_capabilities.current_extent)
+            .image_extent(surface_resolution)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .pre_transform(surface_capabilities.current_transform)
@@ -119,66 +119,65 @@ impl Swapchain {
             })
             .collect::<Vec<vk::ImageView>>();
 
-        let color_attachment_desc = vk::AttachmentDescription::builder()
-            .format(surface_format.format)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .build();
-
-        let color_attachment_ref = vk::AttachmentReference::builder()
-            .attachment(0)
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .build();
-
-        let subpass_desc = vk::SubpassDescription::builder()
-            .color_attachments(&[color_attachment_ref])
-            .build();
-
-        let render_pass_create_info = vk::RenderPassCreateInfo::builder()
-            .attachments(&[color_attachment_desc])
-            .subpasses(&[subpass_desc])
-            .build();
-
-        let render_pass = unsafe { device.create_render_pass(&render_pass_create_info, None)? };
-
-        let framebuffers = image_views
+        let frame_datas = images
             .iter()
-            .map(|&view| {
-                let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(render_pass)
-                    .attachments(&[view])
-                    .width(surface_resolution.width)
-                    .height(surface_resolution.height)
-                    .layers(1)
-                    .build();
-                unsafe {
-                    device
-                        .create_framebuffer(&framebuffer_create_info, None)
-                        .unwrap()
+            .zip(image_views.iter())
+            .map(|(&image, &image_view)| {
+                let graphics_command_pool =
+                    Rc::new(CommandPool::new(graphics_device, queue_family_indices[0]).unwrap());
+                let graphics_command_buffers = graphics_command_pool
+                    .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
+                    .unwrap();
+                let present_command_pool =
+                    Rc::new(CommandPool::new(graphics_device, queue_family_indices[1]).unwrap());
+                let present_command_buffers = present_command_pool
+                    .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
+                    .unwrap();
+
+                FrameData {
+                    image_available_semaphore: vk::Semaphore::null(),
+                    render_finished_semaphore: vk::Semaphore::null(),
+                    in_flight_fence: vk::Fence::null(),
+                    image,
+                    image_view,
+                    graphics_command_pool,
+                    graphics_command_buffer: graphics_command_buffers[0].clone(),
+                    present_command_pool,
+                    present_command_buffer: present_command_buffers[0].clone(),
                 }
             })
-            .collect::<Vec<vk::Framebuffer>>();
+            .collect::<Vec<FrameData>>();
 
         Ok(Self {
             graphics_device: graphics_device.clone(),
             surface: *surface,
             swapchain,
-            images,
-            image_views,
-            render_pass,
-            framebuffers,
-            extent: swapchain_create_info.image_extent,
-            format: swapchain_create_info.image_format,
+            image_extent: surface_resolution,
+            image_format: surface_format.format,
+            image_color_space: surface_format.color_space,
+            present_mode,
+            frame_datas,
         })
     }
 
-    pub fn framebuffer_count(&self) -> usize {
-        self.framebuffers.len()
+    pub fn image_count(&self) -> usize {
+        self.frame_datas.len()
+    }
+
+    pub fn image_extent(&self) -> vk::Extent2D {
+        self.image_extent
+    }
+
+    pub fn image_format(&self) -> vk::Format {
+        self.image_format
+    }
+
+    pub fn image_color_space(&self) -> vk::ColorSpaceKHR {
+        self.image_color_space
+    }
+
+    pub fn present_mode(&self) -> vk::PresentModeKHR {
+        self.present_mode
     }
 
     pub fn acquire_next_image(&self) -> Result<u32, Box<dyn std::error::Error>> {
@@ -203,14 +202,11 @@ impl Drop for Swapchain {
         let swapchain_loader = self.graphics_device.swapchain_loader();
         unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
 
-        for &framebuffer in &self.framebuffers {
-            unsafe { device.destroy_framebuffer(framebuffer, None) }
-        }
-
-        unsafe { device.destroy_render_pass(self.render_pass, None) };
-
-        for &image_view in &self.image_views {
-            unsafe { device.destroy_image_view(image_view, None) };
+        for frame_data in &self.frame_datas {
+            unsafe { device.destroy_fence(frame_data.in_flight_fence, None) };
+            unsafe { device.destroy_semaphore(frame_data.render_finished_semaphore, None) };
+            unsafe { device.destroy_semaphore(frame_data.image_available_semaphore, None) };
+            unsafe { device.destroy_image_view(frame_data.image_view, None) };
         }
 
         let surface_loader = self.graphics_device.surface_loader();

@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use tempura_graphics::GraphicsDevice;
 use tempura_render::Renderer;
+use tempura_vulkan::GraphicsDevice;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -27,7 +27,7 @@ unsafe impl HasRawWindowHandle for WinitWindow {
     }
 }
 
-impl tempura_graphics::Window for WinitWindow {
+impl tempura_vulkan::Window for WinitWindow {
     fn window_size(&self) -> (u32, u32) {
         todo!()
     }
