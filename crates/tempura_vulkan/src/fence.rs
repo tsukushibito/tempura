@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::vulkan_device::VulkanDevice;
+use crate::{Result, VulkanDevice};
 
 pub struct Fence {
     vulkan_device: Rc<VulkanDevice>,
@@ -10,11 +10,13 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub(crate) fn new(
-        vulkan_device: &Rc<VulkanDevice>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, signaled: bool) -> Result<Self> {
         let fence_create_info = vk::FenceCreateInfo::builder()
-            .flags(vk::FenceCreateFlags::SIGNALED)
+            .flags(if signaled {
+                vk::FenceCreateFlags::SIGNALED
+            } else {
+                vk::FenceCreateFlags::empty()
+            })
             .build();
 
         let fence = unsafe {
@@ -33,7 +35,7 @@ impl Fence {
         self.fence
     }
 
-    pub fn wait(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn wait(&self) -> Result<()> {
         unsafe {
             self.vulkan_device
                 .device()
@@ -43,7 +45,7 @@ impl Fence {
         Ok(())
     }
 
-    pub fn reset(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn reset(&self) -> Result<()> {
         unsafe {
             self.vulkan_device.device().reset_fences(&[self.fence])?;
         }

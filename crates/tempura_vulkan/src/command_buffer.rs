@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::command_pool::CommandPool;
-use crate::vulkan_device::VulkanDevice;
+use crate::CommandPool;
+use crate::VulkanDevice;
 
 pub struct CommandBuffer {
     vulkan_device: Rc<VulkanDevice>,

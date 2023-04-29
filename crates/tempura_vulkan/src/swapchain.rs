@@ -1,44 +1,41 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
 use ash::{extensions, vk};
 
 use crate::command_buffer::CommandBuffer;
 use crate::command_pool::CommandPool;
-use crate::common::Window;
-use crate::vulkan_device::VulkanDevice;
+use crate::{Fence, RcWindow, Result, Semaphore, VulkanDevice};
 
 pub struct FrameData {
-    image_available_semaphore: vk::Semaphore,
-    render_finished_semaphore: vk::Semaphore,
-    in_flight_fence: vk::Fence,
-    image: vk::Image,
-    image_view: vk::ImageView,
-    graphics_command_pool: Rc<CommandPool>,
-    graphics_command_buffer: Rc<CommandBuffer>,
-    present_command_pool: Rc<CommandPool>,
-    present_command_buffer: Rc<CommandBuffer>,
+    image_available_semaphore: Rc<Semaphore>,
+    render_finished_semaphore: Rc<Semaphore>,
+    in_flight_fence: Rc<Fence>,
+    command_pool: Rc<CommandPool>,
+    command_buffer: Rc<CommandBuffer>,
 }
+
+const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 pub struct Swapchain {
     vulkan_device: Rc<VulkanDevice>,
+    window: RcWindow,
     surface: vk::SurfaceKHR,
     swapchain: vk::SwapchainKHR,
     image_format: vk::Format,
     image_color_space: vk::ColorSpaceKHR,
     image_extent: vk::Extent2D,
     present_mode: vk::PresentModeKHR,
-    frame_datas: Vec<FrameData>,
+    images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
 }
 
 impl Swapchain {
-    pub fn new<T>(
+    pub fn new(
         vulkan_device: &Rc<VulkanDevice>,
+        window: &RcWindow,
         surface: &vk::SurfaceKHR,
-        window: &T,
-    ) -> Result<Swapchain, Box<dyn std::error::Error>>
-    where
-        T: Window,
-    {
+    ) -> Result<Swapchain> {
         let surface_loader = vulkan_device.surface_loader();
         let physical_device = vulkan_device.physical_device();
         let surface_format = choose_swapchain_format(&surface_loader, &physical_device, surface)?;
@@ -119,49 +116,22 @@ impl Swapchain {
             })
             .collect::<Vec<vk::ImageView>>();
 
-        let frame_datas = images
-            .iter()
-            .zip(image_views.iter())
-            .map(|(&image, &image_view)| {
-                let graphics_command_pool =
-                    Rc::new(CommandPool::new(vulkan_device, queue_family_indices[0]).unwrap());
-                let graphics_command_buffers = graphics_command_pool
-                    .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
-                    .unwrap();
-                let present_command_pool =
-                    Rc::new(CommandPool::new(vulkan_device, queue_family_indices[1]).unwrap());
-                let present_command_buffers = present_command_pool
-                    .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
-                    .unwrap();
-
-                FrameData {
-                    image_available_semaphore: vk::Semaphore::null(),
-                    render_finished_semaphore: vk::Semaphore::null(),
-                    in_flight_fence: vk::Fence::null(),
-                    image,
-                    image_view,
-                    graphics_command_pool,
-                    graphics_command_buffer: graphics_command_buffers[0].clone(),
-                    present_command_pool,
-                    present_command_buffer: present_command_buffers[0].clone(),
-                }
-            })
-            .collect::<Vec<FrameData>>();
-
         Ok(Self {
             vulkan_device: vulkan_device.clone(),
+            window: window.clone(),
             surface: *surface,
             swapchain,
             image_extent: surface_resolution,
             image_format: surface_format.format,
             image_color_space: surface_format.color_space,
+            images,
+            image_views,
             present_mode,
-            frame_datas,
         })
     }
 
     pub fn image_count(&self) -> usize {
-        self.frame_datas.len()
+        self.images.len()
     }
 
     pub fn image_extent(&self) -> vk::Extent2D {
@@ -180,17 +150,33 @@ impl Swapchain {
         self.present_mode
     }
 
-    pub fn acquire_next_image(&self) -> Result<u32, Box<dyn std::error::Error>> {
-        let (index, _) = unsafe {
-            self.vulkan_device.swapchain_loader().acquire_next_image(
+    pub fn image_view(&self, index: usize) -> vk::ImageView {
+        self.image_views[index]
+    }
+
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> Result<u32> {
+        let swapchain_loader = self.vulkan_device.swapchain_loader();
+        let (image_index, _) = unsafe {
+            swapchain_loader.acquire_next_image(
                 self.swapchain,
-                1000 * 1000,
-                vk::Semaphore::null(),
+                std::u64::MAX,
+                semaphore.semaphore(),
                 vk::Fence::null(),
             )?
         };
+        Ok(image_index)
+    }
 
-        Ok(index)
+    pub fn present(&self, image_index: u32, wait_semaphore: &Semaphore) -> Result<()> {
+        let swapchain_loader = self.vulkan_device.swapchain_loader();
+        let queue = self.vulkan_device.present_queue();
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&[wait_semaphore.semaphore()])
+            .swapchains(&[self.swapchain])
+            .image_indices(&[image_index])
+            .build();
+        let suboptimal = unsafe { swapchain_loader.queue_present(queue, &present_info) };
+        Ok(())
     }
 }
 
@@ -202,11 +188,8 @@ impl Drop for Swapchain {
         let swapchain_loader = self.vulkan_device.swapchain_loader();
         unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
 
-        for frame_data in &self.frame_datas {
-            unsafe { device.destroy_fence(frame_data.in_flight_fence, None) };
-            unsafe { device.destroy_semaphore(frame_data.render_finished_semaphore, None) };
-            unsafe { device.destroy_semaphore(frame_data.image_available_semaphore, None) };
-            unsafe { device.destroy_image_view(frame_data.image_view, None) };
+        for &image_view in &self.image_views {
+            unsafe { device.destroy_image_view(image_view, None) };
         }
 
         let surface_loader = self.vulkan_device.surface_loader();
@@ -218,7 +201,7 @@ fn choose_swapchain_format(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> Result<vk::SurfaceFormatKHR, Box<dyn std::error::Error>> {
+) -> Result<vk::SurfaceFormatKHR> {
     let formats =
         unsafe { surface_loader.get_physical_device_surface_formats(*physical_device, *surface)? };
 
@@ -237,7 +220,7 @@ fn choose_swapchain_present_mode(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> Result<vk::PresentModeKHR, Box<dyn std::error::Error>> {
+) -> Result<vk::PresentModeKHR> {
     let present_modes = unsafe {
         surface_loader.get_physical_device_surface_present_modes(*physical_device, *surface)?
     };

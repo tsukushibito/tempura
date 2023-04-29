@@ -5,11 +5,9 @@ use ash::{extensions, Device};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use crate::command_pool::{CommandPool, QueueFamily};
-use crate::common::{QueueFamilyIndices, Window};
-use crate::fence::Fence;
-use crate::semaphore::Semaphore;
-use crate::swapchain::Swapchain;
+use crate::{
+    CommandPool, Fence, QueueFamily, QueueFamilyIndices, RcWindow, Result, Semaphore, Swapchain,
+};
 
 pub struct VulkanDevice {
     entry: Entry,
@@ -23,10 +21,7 @@ pub struct VulkanDevice {
 }
 
 impl VulkanDevice {
-    pub fn new<T>(window: &T) -> Result<Self, Box<dyn std::error::Error>>
-    where
-        T: Window,
-    {
+    pub fn new(window: &RcWindow) -> Result<Self> {
         let entry = unsafe { Entry::load()? };
         let instance = create_instance(&entry, &window.raw_display_handle())?;
 
@@ -75,37 +70,7 @@ impl VulkanDevice {
         })
     }
 
-    pub fn create_swapchain(
-        self: &Rc<Self>,
-        window: &impl Window,
-    ) -> Result<Rc<Swapchain>, Box<dyn std::error::Error>> {
-        let surface = self.create_surface(window)?;
-        Ok(Rc::new(Swapchain::new(self, &surface, window)?))
-    }
-
-    pub fn create_command_pool(
-        self: &Rc<Self>,
-        queue_family: QueueFamily,
-    ) -> Result<Rc<CommandPool>, Box<dyn std::error::Error>> {
-        let queue_family_index = match queue_family {
-            QueueFamily::Graphics => self.queue_family_indices.graphics_family,
-            QueueFamily::Present => self.queue_family_indices.present_family,
-        };
-        Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
-    }
-
-    pub fn create_fence(self: &Rc<Self>) -> Result<Rc<Fence>, Box<dyn std::error::Error>> {
-        Ok(Rc::new(Fence::new(self)?))
-    }
-
-    pub fn create_semaphore(self: &Rc<Self>) -> Result<Rc<Semaphore>, Box<dyn std::error::Error>> {
-        Ok(Rc::new(Semaphore::new(self)?))
-    }
-
-    pub(crate) fn create_surface(
-        &self,
-        window: &impl Window,
-    ) -> Result<vk::SurfaceKHR, Box<dyn std::error::Error>> {
+    pub fn create_swapchain(self: &Rc<Self>, window: &RcWindow) -> Result<Rc<Swapchain>> {
         let surface = unsafe {
             ash_window::create_surface(
                 &self.entry,
@@ -115,8 +80,26 @@ impl VulkanDevice {
                 None,
             )?
         };
+        Ok(Rc::new(Swapchain::new(self, window, &surface)?))
+    }
 
-        Ok(surface)
+    pub fn create_command_pool(
+        self: &Rc<Self>,
+        queue_family: QueueFamily,
+    ) -> Result<Rc<CommandPool>> {
+        let queue_family_index = match queue_family {
+            QueueFamily::Graphics => self.queue_family_indices.graphics_family,
+            QueueFamily::Present => self.queue_family_indices.present_family,
+        };
+        Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
+    }
+
+    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> Result<Rc<Fence>> {
+        Ok(Rc::new(Fence::new(self, signaled)?))
+    }
+
+    pub fn create_semaphore(self: &Rc<Self>) -> Result<Rc<Semaphore>> {
+        Ok(Rc::new(Semaphore::new(self)?))
     }
 
     pub(crate) fn device(&self) -> &Device {
@@ -129,6 +112,14 @@ impl VulkanDevice {
 
     pub(crate) fn queue_family_indices(&self) -> &QueueFamilyIndices {
         &self.queue_family_indices
+    }
+
+    pub(crate) fn graphics_queue(&self) -> vk::Queue {
+        self.graphics_queue
+    }
+
+    pub(crate) fn present_queue(&self) -> vk::Queue {
+        self.present_queue
     }
 
     pub(crate) fn surface_loader(&self) -> ash::extensions::khr::Surface {
@@ -150,10 +141,7 @@ impl Drop for VulkanDevice {
     }
 }
 
-fn create_instance(
-    entry: &Entry,
-    display_handle: &RawDisplayHandle,
-) -> Result<Instance, Box<dyn std::error::Error>> {
+fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> Result<Instance> {
     let app_name = CString::new("tempura")?;
     let engine_name = CString::new("tempura")?;
 
@@ -237,7 +225,7 @@ fn pick_physical_device_and_queue_family(
     entry: &Entry,
     instance: &Instance,
     surface: &vk::SurfaceKHR,
-) -> Result<(vk::PhysicalDevice, QueueFamilyIndices), Box<dyn std::error::Error>> {
+) -> Result<(vk::PhysicalDevice, QueueFamilyIndices)> {
     let physical_devices = unsafe { instance.enumerate_physical_devices()? };
     if physical_devices.is_empty() {
         return Err("No Vulkan-compatible devices found".into());
@@ -301,7 +289,7 @@ fn create_device(
     instance: &Instance,
     physical_device: &vk::PhysicalDevice,
     queue_family_indices: &QueueFamilyIndices,
-) -> Result<Device, Box<dyn std::error::Error>> {
+) -> Result<Device> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
         // #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -2,8 +2,9 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::command_buffer::CommandBuffer;
-use crate::vulkan_device::VulkanDevice;
+use crate::CommandBuffer;
+use crate::Result;
+use crate::VulkanDevice;
 
 pub enum QueueFamily {
     Graphics,
@@ -16,10 +17,7 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub(crate) fn new(
-        vulkan_device: &Rc<VulkanDevice>,
-        queue_family_index: u32,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, queue_family_index: u32) -> Result<Self> {
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
@@ -44,7 +42,7 @@ impl CommandPool {
         self: &Rc<Self>,
         level: vk::CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Vec<Rc<CommandBuffer>>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Rc<CommandBuffer>>> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(level)
@@ -68,6 +66,16 @@ impl CommandPool {
             .collect::<Vec<Rc<CommandBuffer>>>();
 
         Ok(command_buffers)
+    }
+
+    pub fn reset(&self) -> Result<()> {
+        unsafe {
+            self.vulkan_device
+                .device()
+                .reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::empty())?;
+        }
+
+        Ok(())
     }
 }
 
