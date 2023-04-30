@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tempura_render::Renderer;
-use tempura_vulkan::{RcWindow, VulkanDevice};
+use tempura_vulkan::VulkanDevice;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -39,12 +39,6 @@ impl tempura_vulkan::Window for WinitWindow {
     }
 }
 
-impl WinitWindow {
-    fn new(window: Window) -> RcWindow {
-        Rc::new(Box::new(Self { window }))
-    }
-}
-
 fn main() {
     println!("render example.");
     let mut event_loop = EventLoop::new();
@@ -54,13 +48,11 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let winit_window = WinitWindow::new(window);
+    let winit_window = Rc::new(Box::new(WinitWindow { window }));
 
     let device = Rc::new(VulkanDevice::new(&winit_window).unwrap());
     let renderer = Rc::new(Renderer::new(&device, &winit_window).unwrap());
     renderer.render();
-
-    let winit_window = winit_window.as_any().downcast_ref::<WinitWindow>().unwrap();
 
     event_loop.run_return(|event, _, control_flow| {
         control_flow.set_wait();

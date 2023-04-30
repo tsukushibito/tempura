@@ -6,7 +6,8 @@ use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
 use crate::{
-    CommandPool, Fence, QueueFamily, QueueFamilyIndices, RcWindow, Result, Semaphore, Swapchain,
+    CommandBuffer, CommandPool, Fence, QueueFamily, QueueFamilyIndices, Semaphore, Swapchain,
+    TvResult, Window,
 };
 
 pub struct VulkanDevice {
@@ -21,7 +22,7 @@ pub struct VulkanDevice {
 }
 
 impl VulkanDevice {
-    pub fn new(window: &RcWindow) -> Result<Self> {
+    pub fn new<T: Window>(window: &Rc<Box<T>>) -> TvResult<Self> {
         let entry = unsafe { Entry::load()? };
         let instance = create_instance(&entry, &window.raw_display_handle())?;
 
@@ -70,7 +71,10 @@ impl VulkanDevice {
         })
     }
 
-    pub fn create_swapchain(self: &Rc<Self>, window: &RcWindow) -> Result<Rc<Swapchain>> {
+    pub fn create_swapchain<T: Window>(
+        self: &Rc<Self>,
+        window: &Rc<Box<T>>,
+    ) -> TvResult<Rc<Swapchain<T>>> {
         let surface = unsafe {
             ash_window::create_surface(
                 &self.entry,
@@ -86,7 +90,7 @@ impl VulkanDevice {
     pub fn create_command_pool(
         self: &Rc<Self>,
         queue_family: QueueFamily,
-    ) -> Result<Rc<CommandPool>> {
+    ) -> TvResult<Rc<CommandPool>> {
         let queue_family_index = match queue_family {
             QueueFamily::Graphics => self.queue_family_indices.graphics_family,
             QueueFamily::Present => self.queue_family_indices.present_family,
@@ -94,12 +98,50 @@ impl VulkanDevice {
         Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
     }
 
-    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> Result<Rc<Fence>> {
+    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> TvResult<Rc<Fence>> {
         Ok(Rc::new(Fence::new(self, signaled)?))
     }
 
-    pub fn create_semaphore(self: &Rc<Self>) -> Result<Rc<Semaphore>> {
+    pub fn create_semaphore(self: &Rc<Self>) -> TvResult<Rc<Semaphore>> {
         Ok(Rc::new(Semaphore::new(self)?))
+    }
+
+    pub fn submit_commands(
+        &self,
+        wait_semaphores: &[&Semaphore],
+        command_buffers: &[&CommandBuffer],
+        signal_semaphores: &[Semaphore],
+        fence: Option<&Fence>,
+    ) -> TvResult<()> {
+        let wait_semaphores = wait_semaphores
+            .iter()
+            .map(|s| s.semaphore())
+            .collect::<Vec<vk::Semaphore>>();
+        let command_buffers = command_buffers
+            .iter()
+            .map(|cb| cb.command_buffer())
+            .collect::<Vec<vk::CommandBuffer>>();
+        let signal_semaphores = signal_semaphores
+            .iter()
+            .map(|s| s.semaphore())
+            .collect::<Vec<vk::Semaphore>>();
+
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(&wait_semaphores)
+            .command_buffers(&command_buffers)
+            .signal_semaphores(&signal_semaphores)
+            .build();
+        let submit_infos = [submit_info];
+        let fence = if let Some(f) = fence {
+            f.fence()
+        } else {
+            vk::Fence::null()
+        };
+        unsafe {
+            self.device
+                .queue_submit(self.graphics_queue, &submit_infos, fence)?
+        };
+        Ok(())
     }
 
     pub(crate) fn device(&self) -> &Device {
@@ -141,7 +183,7 @@ impl Drop for VulkanDevice {
     }
 }
 
-fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> Result<Instance> {
+fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> TvResult<Instance> {
     let app_name = CString::new("tempura")?;
     let engine_name = CString::new("tempura")?;
 
@@ -225,7 +267,7 @@ fn pick_physical_device_and_queue_family(
     entry: &Entry,
     instance: &Instance,
     surface: &vk::SurfaceKHR,
-) -> Result<(vk::PhysicalDevice, QueueFamilyIndices)> {
+) -> TvResult<(vk::PhysicalDevice, QueueFamilyIndices)> {
     let physical_devices = unsafe { instance.enumerate_physical_devices()? };
     if physical_devices.is_empty() {
         return Err("No Vulkan-compatible devices found".into());
@@ -289,7 +331,7 @@ fn create_device(
     instance: &Instance,
     physical_device: &vk::PhysicalDevice,
     queue_family_indices: &QueueFamilyIndices,
-) -> Result<Device> {
+) -> TvResult<Device> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
         // #[cfg(any(target_os = "macos", target_os = "ios"))]

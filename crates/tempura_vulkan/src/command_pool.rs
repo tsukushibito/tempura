@@ -3,7 +3,7 @@ use std::rc::Rc;
 use ash::vk;
 
 use crate::CommandBuffer;
-use crate::Result;
+use crate::TvResult;
 use crate::VulkanDevice;
 
 pub enum QueueFamily {
@@ -17,7 +17,7 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, queue_family_index: u32) -> Result<Self> {
+    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, queue_family_index: u32) -> TvResult<Self> {
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
@@ -42,7 +42,7 @@ impl CommandPool {
         self: &Rc<Self>,
         level: vk::CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Vec<Rc<CommandBuffer>>> {
+    ) -> TvResult<Vec<Rc<CommandBuffer>>> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(level)
@@ -68,7 +68,7 @@ impl CommandPool {
         Ok(command_buffers)
     }
 
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> TvResult<()> {
         unsafe {
             self.vulkan_device
                 .device()

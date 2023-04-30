@@ -1,25 +1,12 @@
-use std::cell::Cell;
 use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use crate::command_buffer::CommandBuffer;
-use crate::command_pool::CommandPool;
-use crate::{Fence, RcWindow, Result, Semaphore, VulkanDevice};
+use crate::{Fence, Semaphore, TvResult, VulkanDevice, Window};
 
-pub struct FrameData {
-    image_available_semaphore: Rc<Semaphore>,
-    render_finished_semaphore: Rc<Semaphore>,
-    in_flight_fence: Rc<Fence>,
-    command_pool: Rc<CommandPool>,
-    command_buffer: Rc<CommandBuffer>,
-}
-
-const MAX_FRAMES_IN_FLIGHT: usize = 2;
-
-pub struct Swapchain {
+pub struct Swapchain<T: Window> {
     vulkan_device: Rc<VulkanDevice>,
-    window: RcWindow,
+    window: Rc<Box<T>>,
     surface: vk::SurfaceKHR,
     swapchain: vk::SwapchainKHR,
     image_format: vk::Format,
@@ -30,12 +17,12 @@ pub struct Swapchain {
     image_views: Vec<vk::ImageView>,
 }
 
-impl Swapchain {
+impl<T: Window> Swapchain<T> {
     pub fn new(
         vulkan_device: &Rc<VulkanDevice>,
-        window: &RcWindow,
+        window: &Rc<Box<T>>,
         surface: &vk::SurfaceKHR,
-    ) -> Result<Swapchain> {
+    ) -> TvResult<Swapchain<T>> {
         let surface_loader = vulkan_device.surface_loader();
         let physical_device = vulkan_device.physical_device();
         let surface_format = choose_swapchain_format(&surface_loader, &physical_device, surface)?;
@@ -154,7 +141,7 @@ impl Swapchain {
         self.image_views[index]
     }
 
-    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> Result<u32> {
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TvResult<(u32, vk::ImageView)> {
         let swapchain_loader = self.vulkan_device.swapchain_loader();
         let (image_index, _) = unsafe {
             swapchain_loader.acquire_next_image(
@@ -164,10 +151,10 @@ impl Swapchain {
                 vk::Fence::null(),
             )?
         };
-        Ok(image_index)
+        Ok((image_index, self.image_views[image_index as usize]))
     }
 
-    pub fn present(&self, image_index: u32, wait_semaphore: &Semaphore) -> Result<()> {
+    pub fn present(&self, image_index: u32, wait_semaphore: &Semaphore) -> TvResult<()> {
         let swapchain_loader = self.vulkan_device.swapchain_loader();
         let queue = self.vulkan_device.present_queue();
         let present_info = vk::PresentInfoKHR::builder()
@@ -180,7 +167,7 @@ impl Swapchain {
     }
 }
 
-impl Drop for Swapchain {
+impl<T: Window> Drop for Swapchain<T> {
     fn drop(&mut self) {
         let device = self.vulkan_device.device();
         unsafe { device.device_wait_idle().expect("device_wait_idle error") };
@@ -201,7 +188,7 @@ fn choose_swapchain_format(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> Result<vk::SurfaceFormatKHR> {
+) -> TvResult<vk::SurfaceFormatKHR> {
     let formats =
         unsafe { surface_loader.get_physical_device_surface_formats(*physical_device, *surface)? };
 
@@ -220,7 +207,7 @@ fn choose_swapchain_present_mode(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> Result<vk::PresentModeKHR> {
+) -> TvResult<vk::PresentModeKHR> {
     let present_modes = unsafe {
         surface_loader.get_physical_device_surface_present_modes(*physical_device, *surface)?
     };

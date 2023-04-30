@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Result, VulkanDevice};
+use crate::{TvResult, VulkanDevice};
 
 pub struct Fence {
     vulkan_device: Rc<VulkanDevice>,
@@ -10,7 +10,7 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, signaled: bool) -> Result<Self> {
+    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, signaled: bool) -> TvResult<Self> {
         let fence_create_info = vk::FenceCreateInfo::builder()
             .flags(if signaled {
                 vk::FenceCreateFlags::SIGNALED
@@ -35,7 +35,7 @@ impl Fence {
         self.fence
     }
 
-    pub fn wait(&self) -> Result<()> {
+    pub fn wait(&self) -> TvResult<()> {
         unsafe {
             self.vulkan_device
                 .device()
@@ -45,7 +45,7 @@ impl Fence {
         Ok(())
     }
 
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> TvResult<()> {
         unsafe {
             self.vulkan_device.device().reset_fences(&[self.fence])?;
         }

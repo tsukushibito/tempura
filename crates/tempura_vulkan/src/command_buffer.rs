@@ -23,6 +23,10 @@ impl CommandBuffer {
             command_buffer,
         }
     }
+
+    pub(crate) fn command_buffer(&self) -> vk::CommandBuffer {
+        self.command_buffer
+    }
 }
 
 impl Drop for CommandBuffer {
