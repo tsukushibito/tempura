@@ -27,7 +27,7 @@ impl Fence {
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::Fence {
+    pub fn handle(&self) -> vk::Fence {
         self.fence
     }
 

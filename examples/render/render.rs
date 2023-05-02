@@ -67,7 +67,7 @@ fn main() {
                 // println!("window resized. size: {:?}", _size)
             }
             Event::MainEventsCleared => {
-                // renderer.render().expect("render error");
+                renderer.render().expect("render error");
             }
             _ => (),
         }

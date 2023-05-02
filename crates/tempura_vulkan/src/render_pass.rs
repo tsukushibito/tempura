@@ -7,6 +7,9 @@ use crate::{Device, TvResult};
 pub struct RenderPass {
     device: Rc<Device>,
     render_pass: vk::RenderPass,
+    attachments: Vec<vk::AttachmentDescription>,
+    subpasses: Vec<vk::SubpassDescription>,
+    dependencies: Vec<vk::SubpassDependency>,
 }
 
 impl RenderPass {
@@ -25,11 +28,26 @@ impl RenderPass {
         Ok(Self {
             device: device.clone(),
             render_pass,
+            attachments: attachments.to_vec(),
+            subpasses: subpasses.to_vec(),
+            dependencies: dependencies.to_vec(),
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::RenderPass {
+    pub fn handle(&self) -> vk::RenderPass {
         self.render_pass
+    }
+
+    pub fn attachments(&self) -> &[vk::AttachmentDescription] {
+        &self.attachments
+    }
+
+    pub fn subpasses(&self) -> &[vk::SubpassDescription] {
+        &self.subpasses
+    }
+
+    pub fn dependencies(&self) -> &[vk::SubpassDependency] {
+        &self.dependencies
     }
 }
 

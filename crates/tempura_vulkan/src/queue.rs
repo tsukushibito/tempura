@@ -17,7 +17,7 @@ impl Queue {
         }
     }
 
-    pub(crate) fn handle(&self) -> vk::Queue {
+    pub fn handle(&self) -> vk::Queue {
         self.queue
     }
 

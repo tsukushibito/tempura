@@ -21,7 +21,7 @@ impl Framebuffer {
     ) -> TvResult<Self> {
         let info = vk::FramebufferCreateInfo::builder()
             .render_pass(render_pass.handle())
-            .attachments(&[])
+            .attachments(&[image_view.handle()])
             .width(image_view.image().extent().width)
             .height(image_view.image().extent().height)
             .layers(layers)
@@ -37,7 +37,20 @@ impl Framebuffer {
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::Framebuffer {
+    pub fn handle(&self) -> vk::Framebuffer {
         self.framebuffer
+    }
+}
+
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle().device_wait_idle().unwrap();
+        }
+        unsafe {
+            self.device
+                .handle()
+                .destroy_framebuffer(self.framebuffer, None);
+        }
     }
 }

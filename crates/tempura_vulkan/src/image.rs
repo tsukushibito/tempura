@@ -101,27 +101,27 @@ impl Image {
         // })
     }
 
-    pub(crate) fn handle(&self) -> vk::Image {
+    pub fn handle(&self) -> vk::Image {
         self.image
     }
 
-    pub(crate) fn extent(&self) -> vk::Extent3D {
+    pub fn extent(&self) -> vk::Extent3D {
         self.extent
     }
 
-    pub(crate) fn format(&self) -> vk::Format {
+    pub fn format(&self) -> vk::Format {
         self.format
     }
 
-    pub(crate) fn usage(&self) -> vk::ImageUsageFlags {
+    pub fn usage(&self) -> vk::ImageUsageFlags {
         self.usage
     }
 
-    pub(crate) fn tiling(&self) -> vk::ImageTiling {
+    pub fn tiling(&self) -> vk::ImageTiling {
         self.tiling
     }
 
-    pub(crate) fn properties(&self) -> vk::MemoryPropertyFlags {
+    pub fn properties(&self) -> vk::MemoryPropertyFlags {
         self.properties
     }
 }

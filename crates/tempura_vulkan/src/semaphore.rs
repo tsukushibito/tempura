@@ -25,7 +25,7 @@ impl Semaphore {
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::Semaphore {
+    pub fn handle(&self) -> vk::Semaphore {
         self.semaphore
     }
 }

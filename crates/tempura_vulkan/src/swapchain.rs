@@ -155,8 +155,11 @@ impl Swapchain {
         self.present_mode
     }
 
-    pub fn image_view(&self, index: usize) -> Rc<ImageView> {
-        self.image_views[index].clone()
+    pub fn image_views(&self) -> Vec<Rc<ImageView>> {
+        self.image_views
+            .iter()
+            .map(|iv| iv.clone())
+            .collect::<Vec<Rc<ImageView>>>()
     }
 
     pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TvResult<(u32, Rc<ImageView>)> {

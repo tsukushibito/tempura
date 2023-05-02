@@ -5,9 +5,11 @@ use std::{
 
 use ash::vk;
 use tempura_vulkan::{
-    create_render_pass_from_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer,
-    QueueFamily, Semaphore, Swapchain, Window,
+    attachments_for_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer, QueueFamily,
+    RenderPass, Semaphore, Swapchain, Window,
 };
+
+use crate::RenderPassCache;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -22,8 +24,11 @@ pub struct FrameData {
 pub struct Renderer<T: Window> {
     device: Rc<Device>,
     swapchain: RefCell<Swapchain>,
+    framebuffers: RefCell<Vec<Framebuffer>>,
+    render_pass_cache: RenderPassCache,
     window: Rc<T>,
     frame_datas: [FrameData; MAX_FRAMES_IN_FLIGHT],
+    render_pass: RefCell<Rc<RenderPass>>,
     current_frame: Cell<usize>,
 }
 
@@ -50,11 +55,27 @@ impl<T: Window> Renderer<T> {
             }
         });
 
+        let render_pass_cache = RenderPassCache::new();
+        let attachments = attachments_for_swapchain(&swapchain);
+        let subpasses = [vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&[vk::AttachmentReference::builder()
+                .attachment(0)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build()])
+            .build()];
+        let (render_pass, _) =
+            render_pass_cache.get_or_create(&device, &attachments, &subpasses, &[]);
+        let framebuffers = create_framebuffers(&device, &swapchain, &render_pass);
+
         Ok(Self {
             device: device.clone(),
             swapchain: RefCell::new(swapchain),
+            render_pass_cache: RenderPassCache::new(),
+            framebuffers: RefCell::new(framebuffers),
             window: window.clone(),
             frame_datas,
+            render_pass: RefCell::new(render_pass),
             current_frame: Cell::new(0),
         })
     }
@@ -62,6 +83,7 @@ impl<T: Window> Renderer<T> {
     pub fn render(&self) -> Result<(), Box<dyn std::error::Error>> {
         let frame_data = &self.frame_datas[self.current_frame.get()];
         frame_data.in_flight_fence.wait()?;
+        frame_data.in_flight_fence.reset()?;
         let result = self
             .swapchain
             .borrow()
@@ -85,7 +107,57 @@ impl<T: Window> Renderer<T> {
             }
         };
 
+        frame_data.command_pool.reset()?;
         let command_buffer = &frame_data.command_buffer;
+        command_buffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT, None)?;
+        command_buffer.begin_render_pass(
+            &self.render_pass.borrow(),
+            &self.framebuffers.borrow()[index as usize],
+            &vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: self.swapchain.borrow().image_extent(),
+            },
+            &[vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 1.0, 1.0],
+                },
+            }],
+            vk::SubpassContents::INLINE,
+        );
+        command_buffer.end_render_pass();
+        command_buffer.end()?;
+
+        self.device.graphics_queue().submit(
+            &[command_buffer],
+            &[&frame_data.image_available_semaphore],
+            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            &[&frame_data.render_finished_semaphore],
+            Some(&frame_data.in_flight_fence),
+        )?;
+
+        self.device.present_queue().present(
+            &self.swapchain.borrow(),
+            index,
+            &[&frame_data.render_finished_semaphore],
+        )?;
+
+        self.current_frame
+            .set((self.current_frame.get() + 1) % MAX_FRAMES_IN_FLIGHT);
         Ok(())
     }
+}
+
+fn create_framebuffers(
+    device: &Rc<Device>,
+    swapchain: &Swapchain,
+    render_pass: &Rc<RenderPass>,
+) -> Vec<Framebuffer> {
+    let mut framebuffers = Vec::new();
+    for image_view in swapchain.image_views() {
+        let framebuffer = device
+            .create_framebuffer(render_pass, &image_view, 1)
+            .unwrap();
+        framebuffers.push(framebuffer);
+    }
+    framebuffers
 }

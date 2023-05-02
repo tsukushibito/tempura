@@ -40,11 +40,11 @@ impl ImageView {
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::ImageView {
+    pub fn handle(&self) -> vk::ImageView {
         self.image_view
     }
 
-    pub(crate) fn image(&self) -> &Rc<Image> {
+    pub fn image(&self) -> &Rc<Image> {
         &self.image
     }
 }

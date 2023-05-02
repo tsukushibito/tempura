@@ -34,7 +34,7 @@ impl CommandPool {
         })
     }
 
-    pub(crate) fn handle(&self) -> vk::CommandPool {
+    pub fn handle(&self) -> vk::CommandPool {
         self.command_pool
     }
 

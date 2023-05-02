@@ -6,8 +6,8 @@ use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
 use crate::{
-    render_pass, CommandBuffer, CommandPool, Fence, Framebuffer, Image, ImageView, PresentQueue,
-    Queue, QueueFamily, QueueFamilyIndices, Semaphore, Swapchain, TvResult, Window,
+    render_pass, CommandPool, Fence, Framebuffer, Image, ImageView, PresentQueue, Queue,
+    QueueFamily, QueueFamilyIndices, Semaphore, Swapchain, TvResult, Window,
 };
 
 pub struct Device {
@@ -103,6 +103,8 @@ impl Device {
         subpasses: &[vk::SubpassDescription],
         dependencies: &[vk::SubpassDependency],
     ) -> TvResult<render_pass::RenderPass> {
+        let color_attachments =
+            unsafe { core::slice::from_raw_parts(subpasses[0].p_color_attachments, 1) };
         Ok(render_pass::RenderPass::new(
             self,
             attachments,
@@ -152,23 +154,23 @@ impl Device {
         Ok(Semaphore::new(self)?)
     }
 
-    pub(crate) fn handle(&self) -> &AshDevice {
+    pub fn handle(&self) -> &AshDevice {
         &self.device
     }
 
-    pub(crate) fn physical_device(&self) -> vk::PhysicalDevice {
+    pub fn physical_device(&self) -> vk::PhysicalDevice {
         self.physical_device
     }
 
-    pub(crate) fn queue_family_indices(&self) -> &QueueFamilyIndices {
+    pub fn queue_family_indices(&self) -> &QueueFamilyIndices {
         &self.queue_family_indices
     }
 
-    pub(crate) fn surface_loader(&self) -> ash::extensions::khr::Surface {
+    pub fn surface_loader(&self) -> ash::extensions::khr::Surface {
         extensions::khr::Surface::new(&self.entry, &self.instance)
     }
 
-    pub(crate) fn swapchain_loader(&self) -> ash::extensions::khr::Swapchain {
+    pub fn swapchain_loader(&self) -> ash::extensions::khr::Swapchain {
         extensions::khr::Swapchain::new(&self.instance, &self.device)
     }
 }
