@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use crate::{Device, Semaphore, TvResult, Window};
+use crate::{Device, Image, ImageView, Semaphore, TvResult, Window};
 
 pub struct Swapchain {
     device: Rc<Device>,
@@ -12,8 +12,8 @@ pub struct Swapchain {
     image_color_space: vk::ColorSpaceKHR,
     image_extent: vk::Extent2D,
     present_mode: vk::PresentModeKHR,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
+    images: Vec<Rc<Image>>,
+    image_views: Vec<Rc<ImageView>>,
 }
 
 impl Swapchain {
@@ -77,30 +77,46 @@ impl Swapchain {
         let swapchain_loader = device.swapchain_loader();
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None)? };
         let images = unsafe { swapchain_loader.get_swapchain_images(swapchain)? };
+        let images = images
+            .iter()
+            .map(|i| {
+                Rc::new(
+                    Image::new_for_swapchain(
+                        device,
+                        *i,
+                        swapchain_create_info.image_extent,
+                        swapchain_create_info.image_format,
+                    )
+                    .unwrap(),
+                )
+            })
+            .collect::<Vec<Rc<Image>>>();
+
         let image_views = images
             .iter()
-            .map(|&image| {
-                let info = vk::ImageViewCreateInfo::builder()
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(surface_format.format)
-                    .components(vk::ComponentMapping {
-                        r: vk::ComponentSwizzle::R,
-                        g: vk::ComponentSwizzle::G,
-                        b: vk::ComponentSwizzle::B,
-                        a: vk::ComponentSwizzle::A,
-                    })
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .image(image)
-                    .build();
-                unsafe { device.handle().create_image_view(&info, None).unwrap() }
+            .map(|image| {
+                let view_type = vk::ImageViewType::TYPE_2D;
+                let format = surface_format.format;
+                let components = vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::R,
+                    g: vk::ComponentSwizzle::G,
+                    b: vk::ComponentSwizzle::B,
+                    a: vk::ComponentSwizzle::A,
+                };
+                let subresource_range = vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                };
+                Rc::new(
+                    device
+                        .create_image_view(image, view_type, format, components, subresource_range)
+                        .unwrap(),
+                )
             })
-            .collect::<Vec<vk::ImageView>>();
+            .collect::<Vec<Rc<ImageView>>>();
 
         Ok(Self {
             device: device.clone(),
@@ -113,6 +129,10 @@ impl Swapchain {
             image_views,
             present_mode,
         })
+    }
+
+    pub fn handle(&self) -> vk::SwapchainKHR {
+        self.swapchain
     }
 
     pub fn image_count(&self) -> usize {
@@ -135,11 +155,11 @@ impl Swapchain {
         self.present_mode
     }
 
-    pub fn image_view(&self, index: usize) -> vk::ImageView {
-        self.image_views[index]
+    pub fn image_view(&self, index: usize) -> Rc<ImageView> {
+        self.image_views[index].clone()
     }
 
-    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TvResult<(u32, vk::ImageView)> {
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TvResult<(u32, Rc<ImageView>)> {
         let swapchain_loader = self.device.swapchain_loader();
         let (image_index, _) = unsafe {
             swapchain_loader.acquire_next_image(
@@ -149,7 +169,7 @@ impl Swapchain {
                 vk::Fence::null(),
             )?
         };
-        Ok((image_index, self.image_views[image_index as usize]))
+        Ok((image_index, self.image_views[image_index as usize].clone()))
     }
 }
 
@@ -160,10 +180,6 @@ impl Drop for Swapchain {
 
         let swapchain_loader = self.device.swapchain_loader();
         unsafe { swapchain_loader.destroy_swapchain(self.swapchain, None) };
-
-        for &image_view in &self.image_views {
-            unsafe { device.destroy_image_view(image_view, None) };
-        }
 
         let surface_loader = self.device.surface_loader();
         unsafe { surface_loader.destroy_surface(self.surface, None) };

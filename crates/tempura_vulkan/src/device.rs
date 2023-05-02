@@ -6,8 +6,8 @@ use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
 use crate::{
-    CommandBuffer, CommandPool, Fence, Queue, QueueFamily, QueueFamilyIndices, Semaphore,
-    Swapchain, TvResult, Window,
+    render_pass, CommandBuffer, CommandPool, Fence, Framebuffer, Image, ImageView, PresentQueue,
+    Queue, QueueFamily, QueueFamilyIndices, Semaphore, Swapchain, TvResult, Window,
 };
 
 pub struct Device {
@@ -75,8 +75,49 @@ impl Device {
         Queue::new(self, self.graphics_queue)
     }
 
-    pub fn present_queue(self: &Rc<Self>) -> Queue {
-        Queue::new(self, self.present_queue)
+    pub fn present_queue(self: &Rc<Self>) -> PresentQueue {
+        PresentQueue::new(self, self.present_queue)
+    }
+
+    pub fn create_image_view(
+        self: &Rc<Self>,
+        image: &Rc<Image>,
+        view_type: vk::ImageViewType,
+        format: vk::Format,
+        components: vk::ComponentMapping,
+        subresource_range: vk::ImageSubresourceRange,
+    ) -> TvResult<ImageView> {
+        Ok(ImageView::new(
+            self,
+            image,
+            view_type,
+            format,
+            components,
+            subresource_range,
+        )?)
+    }
+
+    pub fn create_render_pass(
+        self: &Rc<Self>,
+        attachments: &[vk::AttachmentDescription],
+        subpasses: &[vk::SubpassDescription],
+        dependencies: &[vk::SubpassDependency],
+    ) -> TvResult<render_pass::RenderPass> {
+        Ok(render_pass::RenderPass::new(
+            self,
+            attachments,
+            subpasses,
+            dependencies,
+        )?)
+    }
+
+    pub fn create_framebuffer(
+        self: &Rc<Self>,
+        render_pass: &Rc<render_pass::RenderPass>,
+        image_view: &Rc<ImageView>,
+        layers: u32,
+    ) -> TvResult<Framebuffer> {
+        Ok(Framebuffer::new(self, render_pass, image_view, layers)?)
     }
 
     pub fn create_swapchain<T: Window>(self: &Rc<Self>, window: &Rc<T>) -> TvResult<Swapchain> {

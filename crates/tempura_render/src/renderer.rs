@@ -5,7 +5,8 @@ use std::{
 
 use ash::vk;
 use tempura_vulkan::{
-    CommandBuffer, CommandPool, Device, Fence, QueueFamily, Semaphore, Swapchain, Window,
+    create_render_pass_from_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer,
+    QueueFamily, Semaphore, Swapchain, Window,
 };
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;

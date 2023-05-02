@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::Device;
+use crate::{Device, TvResult};
 
 pub struct Semaphore {
     device: Rc<Device>,
@@ -10,7 +10,7 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub(crate) fn new(device: &Rc<Device>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(device: &Rc<Device>) -> TvResult<Self> {
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
 
         let semaphore = unsafe {
