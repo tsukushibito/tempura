@@ -2,22 +2,22 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{CommandBuffer, Fence, Semaphore, Swapchain, TvResult, VulkanDevice, Window};
+use crate::{CommandBuffer, Device, Fence, Semaphore, TvResult};
 
 pub struct Queue {
-    vulkan_device: Rc<VulkanDevice>,
+    device: Rc<Device>,
     queue: vk::Queue,
 }
 
 impl Queue {
-    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, queue: vk::Queue) -> Self {
+    pub(crate) fn new(device: &Rc<Device>, queue: vk::Queue) -> Self {
         Self {
-            vulkan_device: vulkan_device.clone(),
+            device: device.clone(),
             queue,
         }
     }
 
-    pub(crate) fn queue(&self) -> vk::Queue {
+    pub(crate) fn handle(&self) -> vk::Queue {
         self.queue
     }
 
@@ -31,17 +31,17 @@ impl Queue {
     ) -> TvResult<()> {
         let command_buffers = command_buffers
             .iter()
-            .map(|cb| cb.command_buffer())
+            .map(|cb| cb.handle())
             .collect::<Vec<vk::CommandBuffer>>();
 
         let wait_semaphores = wait_semaphores
             .iter()
-            .map(|s| s.semaphore())
+            .map(|s| s.handle())
             .collect::<Vec<vk::Semaphore>>();
 
         let signal_semaphores = signal_semaphores
             .iter()
-            .map(|s| s.semaphore())
+            .map(|s| s.handle())
             .collect::<Vec<vk::Semaphore>>();
 
         let submit_info = vk::SubmitInfo::builder()
@@ -52,14 +52,14 @@ impl Queue {
             .build();
 
         let fence = if let Some(f) = fence {
-            f.fence()
+            f.handle()
         } else {
             vk::Fence::null()
         };
 
         unsafe {
-            self.vulkan_device
-                .device()
+            self.device
+                .handle()
                 .queue_submit(self.queue, &[submit_info], fence)?;
         }
 

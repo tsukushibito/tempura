@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use tempura_render::Renderer;
-use tempura_vulkan::VulkanDevice;
+use tempura_vulkan::Device;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -48,11 +48,10 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let winit_window = Rc::new(Box::new(WinitWindow { window }));
+    let winit_window = Rc::new(WinitWindow { window });
 
-    let device = Rc::new(VulkanDevice::new(&winit_window).unwrap());
+    let device = Rc::new(Device::new(&winit_window).unwrap());
     let renderer = Rc::new(Renderer::new(&device, &winit_window).unwrap());
-    renderer.render();
 
     event_loop.run_return(|event, _, control_flow| {
         control_flow.set_wait();
@@ -67,7 +66,9 @@ fn main() {
             } if window_id == winit_window.window.id() => {
                 // println!("window resized. size: {:?}", _size)
             }
-            Event::MainEventsCleared => {}
+            Event::MainEventsCleared => {
+                renderer.render().expect("render error");
+            }
             _ => (),
         }
     });

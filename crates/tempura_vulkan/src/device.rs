@@ -1,19 +1,19 @@
 use std::ffi::{c_char, CString};
 use std::rc::Rc;
 
-use ash::{extensions, Device};
+use ash::{extensions, Device as AshDevice};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
 use crate::{
-    CommandBuffer, CommandPool, Fence, QueueFamily, QueueFamilyIndices, Semaphore, Swapchain,
-    TvResult, Window,
+    CommandBuffer, CommandPool, Fence, Queue, QueueFamily, QueueFamilyIndices, Semaphore,
+    Swapchain, TvResult, Window,
 };
 
-pub struct VulkanDevice {
+pub struct Device {
     entry: Entry,
     instance: Instance,
-    device: Device,
+    device: AshDevice,
     physical_device: vk::PhysicalDevice,
     queue_family_indices: QueueFamilyIndices,
     graphics_queue: vk::Queue,
@@ -21,8 +21,8 @@ pub struct VulkanDevice {
     debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl VulkanDevice {
-    pub fn new<T: Window>(window: &Rc<Box<T>>) -> TvResult<Self> {
+impl Device {
+    pub fn new<T: Window>(window: &Rc<T>) -> TvResult<Self> {
         let entry = unsafe { Entry::load()? };
         let instance = create_instance(&entry, &window.raw_display_handle())?;
 
@@ -71,10 +71,15 @@ impl VulkanDevice {
         })
     }
 
-    pub fn create_swapchain<T: Window>(
-        self: &Rc<Self>,
-        window: &Rc<Box<T>>,
-    ) -> TvResult<Rc<Swapchain<T>>> {
+    pub fn graphics_queue(self: &Rc<Self>) -> Queue {
+        Queue::new(self, self.graphics_queue)
+    }
+
+    pub fn present_queue(self: &Rc<Self>) -> Queue {
+        Queue::new(self, self.present_queue)
+    }
+
+    pub fn create_swapchain<T: Window>(self: &Rc<Self>, window: &Rc<T>) -> TvResult<Swapchain> {
         let surface = unsafe {
             ash_window::create_surface(
                 &self.entry,
@@ -84,67 +89,29 @@ impl VulkanDevice {
                 None,
             )?
         };
-        Ok(Rc::new(Swapchain::new(self, window, &surface)?))
+        Ok(Swapchain::new(self, window, &surface)?)
     }
 
     pub fn create_command_pool(
         self: &Rc<Self>,
         queue_family: QueueFamily,
-    ) -> TvResult<Rc<CommandPool>> {
+    ) -> TvResult<CommandPool> {
         let queue_family_index = match queue_family {
             QueueFamily::Graphics => self.queue_family_indices.graphics_family,
             QueueFamily::Present => self.queue_family_indices.present_family,
         };
-        Ok(Rc::new(CommandPool::new(self, queue_family_index)?))
+        Ok(CommandPool::new(self, queue_family_index)?)
     }
 
-    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> TvResult<Rc<Fence>> {
-        Ok(Rc::new(Fence::new(self, signaled)?))
+    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> TvResult<Fence> {
+        Ok(Fence::new(self, signaled)?)
     }
 
-    pub fn create_semaphore(self: &Rc<Self>) -> TvResult<Rc<Semaphore>> {
-        Ok(Rc::new(Semaphore::new(self)?))
+    pub fn create_semaphore(self: &Rc<Self>) -> TvResult<Semaphore> {
+        Ok(Semaphore::new(self)?)
     }
 
-    pub fn submit_commands(
-        &self,
-        wait_semaphores: &[&Semaphore],
-        command_buffers: &[&CommandBuffer],
-        signal_semaphores: &[Semaphore],
-        fence: Option<&Fence>,
-    ) -> TvResult<()> {
-        let wait_semaphores = wait_semaphores
-            .iter()
-            .map(|s| s.semaphore())
-            .collect::<Vec<vk::Semaphore>>();
-        let command_buffers = command_buffers
-            .iter()
-            .map(|cb| cb.command_buffer())
-            .collect::<Vec<vk::CommandBuffer>>();
-        let signal_semaphores = signal_semaphores
-            .iter()
-            .map(|s| s.semaphore())
-            .collect::<Vec<vk::Semaphore>>();
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(&wait_semaphores)
-            .command_buffers(&command_buffers)
-            .signal_semaphores(&signal_semaphores)
-            .build();
-        let submit_infos = [submit_info];
-        let fence = if let Some(f) = fence {
-            f.fence()
-        } else {
-            vk::Fence::null()
-        };
-        unsafe {
-            self.device
-                .queue_submit(self.graphics_queue, &submit_infos, fence)?
-        };
-        Ok(())
-    }
-
-    pub(crate) fn device(&self) -> &Device {
+    pub(crate) fn handle(&self) -> &AshDevice {
         &self.device
     }
 
@@ -156,14 +123,6 @@ impl VulkanDevice {
         &self.queue_family_indices
     }
 
-    pub(crate) fn graphics_queue(&self) -> vk::Queue {
-        self.graphics_queue
-    }
-
-    pub(crate) fn present_queue(&self) -> vk::Queue {
-        self.present_queue
-    }
-
     pub(crate) fn surface_loader(&self) -> ash::extensions::khr::Surface {
         extensions::khr::Surface::new(&self.entry, &self.instance)
     }
@@ -173,7 +132,7 @@ impl VulkanDevice {
     }
 }
 
-impl Drop for VulkanDevice {
+impl Drop for Device {
     fn drop(&mut self) {
         _ = unsafe { self.device.device_wait_idle() };
         let debug_utils_loader = extensions::ext::DebugUtils::new(&self.entry, &self.instance);
@@ -331,7 +290,7 @@ fn create_device(
     instance: &Instance,
     physical_device: &vk::PhysicalDevice,
     queue_family_indices: &QueueFamilyIndices,
-) -> TvResult<Device> {
+) -> TvResult<AshDevice> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
         // #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -365,7 +324,7 @@ fn create_device(
 }
 
 fn get_device_queues(
-    device: &Device,
+    device: &AshDevice,
     queue_family_indices: &QueueFamilyIndices,
 ) -> (vk::Queue, vk::Queue) {
     let graphics_queue =

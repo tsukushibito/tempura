@@ -2,32 +2,30 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::VulkanDevice;
+use crate::Device;
 
 pub struct Semaphore {
-    vulkan_device: Rc<VulkanDevice>,
+    device: Rc<Device>,
     semaphore: vk::Semaphore,
 }
 
 impl Semaphore {
-    pub(crate) fn new(
-        vulkan_device: &Rc<VulkanDevice>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(device: &Rc<Device>) -> Result<Self, Box<dyn std::error::Error>> {
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
 
         let semaphore = unsafe {
-            vulkan_device
-                .device()
+            device
+                .handle()
                 .create_semaphore(&semaphore_create_info, None)?
         };
 
         Ok(Self {
-            vulkan_device: vulkan_device.clone(),
+            device: device.clone(),
             semaphore,
         })
     }
 
-    pub(crate) fn semaphore(&self) -> vk::Semaphore {
+    pub(crate) fn handle(&self) -> vk::Semaphore {
         self.semaphore
     }
 }
@@ -35,12 +33,10 @@ impl Semaphore {
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.vulkan_device.device().device_wait_idle().unwrap();
+            self.device.handle().device_wait_idle().unwrap();
         }
         unsafe {
-            self.vulkan_device
-                .device()
-                .destroy_semaphore(self.semaphore, None);
+            self.device.handle().destroy_semaphore(self.semaphore, None);
         }
     }
 }

@@ -3,8 +3,8 @@ use std::rc::Rc;
 use ash::vk;
 
 use crate::CommandBuffer;
+use crate::Device;
 use crate::TvResult;
-use crate::VulkanDevice;
 
 pub enum QueueFamily {
     Graphics,
@@ -12,29 +12,29 @@ pub enum QueueFamily {
 }
 
 pub struct CommandPool {
-    vulkan_device: Rc<VulkanDevice>,
+    device: Rc<Device>,
     command_pool: vk::CommandPool,
 }
 
 impl CommandPool {
-    pub(crate) fn new(vulkan_device: &Rc<VulkanDevice>, queue_family_index: u32) -> TvResult<Self> {
+    pub(crate) fn new(device: &Rc<Device>, queue_family_index: u32) -> TvResult<Self> {
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
         let command_pool = unsafe {
-            vulkan_device
-                .device()
+            device
+                .handle()
                 .create_command_pool(&command_pool_create_info, None)?
         };
 
         Ok(Self {
-            vulkan_device: vulkan_device.clone(),
+            device: device.clone(),
             command_pool,
         })
     }
 
-    pub(crate) fn command_pool(&self) -> vk::CommandPool {
+    pub(crate) fn handle(&self) -> vk::CommandPool {
         self.command_pool
     }
 
@@ -42,36 +42,30 @@ impl CommandPool {
         self: &Rc<Self>,
         level: vk::CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> TvResult<Vec<Rc<CommandBuffer>>> {
+    ) -> TvResult<Vec<CommandBuffer>> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(level)
             .command_buffer_count(command_buffer_count);
 
         let command_buffers = unsafe {
-            self.vulkan_device
-                .device()
+            self.device
+                .handle()
                 .allocate_command_buffers(&command_buffer_allocate_info)?
         };
 
         let command_buffers = command_buffers
             .iter()
-            .map(|&command_buffer| {
-                Rc::new(CommandBuffer::new(
-                    &self.vulkan_device,
-                    self,
-                    command_buffer,
-                ))
-            })
-            .collect::<Vec<Rc<CommandBuffer>>>();
+            .map(|&command_buffer| CommandBuffer::new(&self.device, self, command_buffer))
+            .collect::<Vec<CommandBuffer>>();
 
         Ok(command_buffers)
     }
 
     pub fn reset(&self) -> TvResult<()> {
         unsafe {
-            self.vulkan_device
-                .device()
+            self.device
+                .handle()
                 .reset_command_pool(self.command_pool, vk::CommandPoolResetFlags::empty())?;
         }
 
@@ -81,10 +75,10 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
-        unsafe { self.vulkan_device.device().device_wait_idle().unwrap() };
+        unsafe { self.device.handle().device_wait_idle().unwrap() };
         unsafe {
-            self.vulkan_device
-                .device()
+            self.device
+                .handle()
                 .destroy_command_pool(self.command_pool, None)
         };
     }
