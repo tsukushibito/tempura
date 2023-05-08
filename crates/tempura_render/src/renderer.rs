@@ -144,6 +144,31 @@ impl<T: Window> Renderer<T> {
             .set((self.current_frame.get() + 1) % MAX_FRAMES_IN_FLIGHT);
         Ok(())
     }
+
+    pub fn recreate_swapchain(&self) -> Result<(), Box<dyn std::error::Error>> {
+        unsafe { self.device.handle().device_wait_idle()? };
+        self.swapchain.replace(
+            Swapchain::new(&self.device, &self.window).expect("Failed to create swapchain"),
+        );
+        let attachments = attachments_for_swapchain(&self.swapchain.borrow());
+        let subpasses = [vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&[vk::AttachmentReference::builder()
+                .attachment(0)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build()])
+            .build()];
+        let (render_pass, _) =
+            self.render_pass_cache
+                .get_or_create(&self.device, &attachments, &subpasses, &[]);
+        self.render_pass.replace(render_pass);
+        self.framebuffers.replace(create_framebuffers(
+            &self.device,
+            &self.swapchain.borrow(),
+            &self.render_pass.borrow(),
+        ));
+        Ok(())
+    }
 }
 
 fn create_framebuffers(

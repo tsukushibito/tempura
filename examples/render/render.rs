@@ -62,9 +62,10 @@ fn main() {
             } if window_id == winit_window.window.id() => control_flow.set_exit(),
             Event::WindowEvent {
                 window_id,
-                event: WindowEvent::Resized(_size),
+                event: WindowEvent::Resized(size),
             } if window_id == winit_window.window.id() => {
-                // println!("window resized. size: {:?}", _size)
+                println!("window resized. size: {:?}", size);
+                renderer.recreate_swapchain().unwrap();
             }
             Event::MainEventsCleared => {
                 renderer.render().expect("render error");
