@@ -46,7 +46,7 @@ impl Image {
         })
     }
 
-    pub(crate) fn new(
+    pub fn new(
         device: &Rc<Device>,
         extent: vk::Extent3D,
         format: vk::Format,

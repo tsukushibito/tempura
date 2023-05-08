@@ -47,8 +47,7 @@ impl RenderPassCache {
         }
 
         let render_pass = Rc::new(
-            device
-                .create_render_pass(attachments, subpasses, dependencies)
+            RenderPass::new(device, attachments, subpasses, dependencies)
                 .expect("Failed to create render pass"),
         );
         render_passes.insert(hash, render_pass.clone());

@@ -13,7 +13,7 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
-    pub(crate) fn new(
+    pub fn new(
         device: &Rc<Device>,
         attachments: &[vk::AttachmentDescription],
         subpasses: &[vk::SubpassDescription],

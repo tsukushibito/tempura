@@ -11,7 +11,7 @@ pub struct ImageView {
 }
 
 impl ImageView {
-    pub(crate) fn new(
+    pub fn new(
         device: &Rc<Device>,
         image: &Rc<Image>,
         view_type: vk::ImageViewType,

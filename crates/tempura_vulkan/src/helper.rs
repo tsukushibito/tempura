@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
 use ash::vk;
 
-use crate::{Device, RenderPass, Swapchain, TvResult};
+use crate::Swapchain;
 
 pub fn attachments_for_swapchain(swapchain: &Swapchain) -> Vec<vk::AttachmentDescription> {
     vec![vk::AttachmentDescription::builder()

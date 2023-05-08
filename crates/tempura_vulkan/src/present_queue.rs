@@ -10,7 +10,7 @@ pub struct PresentQueue {
 }
 
 impl PresentQueue {
-    pub(crate) fn new(device: &Rc<Device>, queue: vk::Queue) -> Self {
+    pub fn new(device: &Rc<Device>, queue: vk::Queue) -> Self {
         Self {
             device: device.clone(),
             queue,

@@ -10,7 +10,7 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub(crate) fn new(device: &Rc<Device>) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>) -> TvResult<Self> {
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
 
         let semaphore = unsafe {

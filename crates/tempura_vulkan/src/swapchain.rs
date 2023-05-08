@@ -17,21 +17,18 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub(crate) fn new<T: Window>(
-        device: &Rc<Device>,
-        window: &Rc<T>,
-        surface: &vk::SurfaceKHR,
-    ) -> TvResult<Swapchain> {
+    pub fn new<T: Window>(device: &Rc<Device>, window: &Rc<T>) -> TvResult<Swapchain> {
+        let surface = device.create_surface(window)?;
         let surface_loader = device.surface_loader();
         let physical_device = device.physical_device();
 
-        let surface_format = choose_swapchain_format(&surface_loader, &physical_device, surface)?;
+        let surface_format = choose_swapchain_format(&surface_loader, &physical_device, &surface)?;
 
         let present_mode =
-            choose_swapchain_present_mode(&surface_loader, &physical_device, surface)?;
+            choose_swapchain_present_mode(&surface_loader, &physical_device, &surface)?;
 
         let surface_capabilities = unsafe {
-            surface_loader.get_physical_device_surface_capabilities(physical_device, *surface)?
+            surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
         };
         let image_count = std::cmp::min(
             surface_capabilities.min_image_count + 1,
@@ -45,7 +42,7 @@ impl Swapchain {
         };
 
         let mut swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(*surface)
+            .surface(surface)
             .min_image_count(image_count)
             .image_format(surface_format.format)
             .image_color_space(surface_format.color_space)
@@ -110,17 +107,28 @@ impl Swapchain {
                     base_array_layer: 0,
                     layer_count: 1,
                 };
+                // Rc::new(
+                //     device
+                //         .create_image_view(image, view_type, format, components, subresource_range)
+                //         .unwrap(),
+                // )
                 Rc::new(
-                    device
-                        .create_image_view(image, view_type, format, components, subresource_range)
-                        .unwrap(),
+                    ImageView::new(
+                        device,
+                        image,
+                        view_type,
+                        format,
+                        components,
+                        subresource_range,
+                    )
+                    .unwrap(),
                 )
             })
             .collect::<Vec<Rc<ImageView>>>();
 
         Ok(Self {
             device: device.clone(),
-            surface: *surface,
+            surface: surface,
             swapchain,
             image_extent: surface_resolution,
             image_format: surface_format.format,

@@ -10,7 +10,7 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub(crate) fn new(device: &Rc<Device>, signaled: bool) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>, signaled: bool) -> TvResult<Self> {
         let fence_create_info = vk::FenceCreateInfo::builder()
             .flags(if signaled {
                 vk::FenceCreateFlags::SIGNALED

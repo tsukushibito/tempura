@@ -34,13 +34,13 @@ pub struct Renderer<T: Window> {
 
 impl<T: Window> Renderer<T> {
     pub fn new(device: &Rc<Device>, window: &Rc<T>) -> Result<Self, Box<dyn std::error::Error>> {
-        let swapchain = device.create_swapchain(window)?;
+        let swapchain = Swapchain::new(device, window)?;
 
         let frame_datas = core::array::from_fn(|_| {
-            let image_available_semaphore = device.create_semaphore().unwrap();
-            let render_finished_semaphore = device.create_semaphore().unwrap();
-            let in_flight_fence = device.create_fence(true).unwrap();
-            let command_pool = Rc::new(device.create_command_pool(QueueFamily::Graphics).unwrap());
+            let image_available_semaphore = Semaphore::new(device).unwrap();
+            let render_finished_semaphore = Semaphore::new(device).unwrap();
+            let in_flight_fence = Fence::new(device, true).unwrap();
+            let command_pool = Rc::new(CommandPool::new(device, QueueFamily::Graphics).unwrap());
             let command_buffer = command_pool
                 .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
                 .unwrap()
@@ -96,8 +96,7 @@ impl<T: Window> Renderer<T> {
                 match vk_result {
                     Some(_) => {
                         self.swapchain.replace(
-                            self.device
-                                .create_swapchain(&self.window)
+                            Swapchain::new(&self.device, &self.window)
                                 .expect("Failed to create swapchain"),
                         );
                         return Ok(());
@@ -154,9 +153,7 @@ fn create_framebuffers(
 ) -> Vec<Framebuffer> {
     let mut framebuffers = Vec::new();
     for image_view in swapchain.image_views() {
-        let framebuffer = device
-            .create_framebuffer(render_pass, &image_view, 1)
-            .unwrap();
+        let framebuffer = Framebuffer::new(device, render_pass, &image_view, 1).unwrap();
         framebuffers.push(framebuffer);
     }
     framebuffers

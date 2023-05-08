@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{image, Device, ImageView, RenderPass, TvResult};
+use crate::{Device, ImageView, RenderPass, TvResult};
 
 pub struct Framebuffer {
     device: Rc<Device>,
@@ -13,7 +13,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub(crate) fn new(
+    pub fn new(
         device: &Rc<Device>,
         render_pass: &Rc<RenderPass>,
         image_view: &Rc<ImageView>,

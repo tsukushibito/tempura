@@ -5,10 +5,7 @@ use ash::{extensions, Device as AshDevice};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use crate::{
-    render_pass, CommandPool, Fence, Framebuffer, Image, ImageView, PresentQueue, Queue,
-    QueueFamily, QueueFamilyIndices, Semaphore, Swapchain, TvResult, Window,
-};
+use crate::{PresentQueue, Queue, QueueFamily, QueueFamilyIndices, TvResult, Window};
 
 pub struct Device {
     entry: Entry,
@@ -71,89 +68,6 @@ impl Device {
         })
     }
 
-    pub fn graphics_queue(self: &Rc<Self>) -> Queue {
-        Queue::new(self, self.graphics_queue)
-    }
-
-    pub fn present_queue(self: &Rc<Self>) -> PresentQueue {
-        PresentQueue::new(self, self.present_queue)
-    }
-
-    pub fn create_image_view(
-        self: &Rc<Self>,
-        image: &Rc<Image>,
-        view_type: vk::ImageViewType,
-        format: vk::Format,
-        components: vk::ComponentMapping,
-        subresource_range: vk::ImageSubresourceRange,
-    ) -> TvResult<ImageView> {
-        Ok(ImageView::new(
-            self,
-            image,
-            view_type,
-            format,
-            components,
-            subresource_range,
-        )?)
-    }
-
-    pub fn create_render_pass(
-        self: &Rc<Self>,
-        attachments: &[vk::AttachmentDescription],
-        subpasses: &[vk::SubpassDescription],
-        dependencies: &[vk::SubpassDependency],
-    ) -> TvResult<render_pass::RenderPass> {
-        let color_attachments =
-            unsafe { core::slice::from_raw_parts(subpasses[0].p_color_attachments, 1) };
-        Ok(render_pass::RenderPass::new(
-            self,
-            attachments,
-            subpasses,
-            dependencies,
-        )?)
-    }
-
-    pub fn create_framebuffer(
-        self: &Rc<Self>,
-        render_pass: &Rc<render_pass::RenderPass>,
-        image_view: &Rc<ImageView>,
-        layers: u32,
-    ) -> TvResult<Framebuffer> {
-        Ok(Framebuffer::new(self, render_pass, image_view, layers)?)
-    }
-
-    pub fn create_swapchain<T: Window>(self: &Rc<Self>, window: &Rc<T>) -> TvResult<Swapchain> {
-        let surface = unsafe {
-            ash_window::create_surface(
-                &self.entry,
-                &self.instance,
-                window.raw_display_handle(),
-                window.raw_window_handle(),
-                None,
-            )?
-        };
-        Ok(Swapchain::new(self, window, &surface)?)
-    }
-
-    pub fn create_command_pool(
-        self: &Rc<Self>,
-        queue_family: QueueFamily,
-    ) -> TvResult<CommandPool> {
-        let queue_family_index = match queue_family {
-            QueueFamily::Graphics => self.queue_family_indices.graphics_family,
-            QueueFamily::Present => self.queue_family_indices.present_family,
-        };
-        Ok(CommandPool::new(self, queue_family_index)?)
-    }
-
-    pub fn create_fence(self: &Rc<Self>, signaled: bool) -> TvResult<Fence> {
-        Ok(Fence::new(self, signaled)?)
-    }
-
-    pub fn create_semaphore(self: &Rc<Self>) -> TvResult<Semaphore> {
-        Ok(Semaphore::new(self)?)
-    }
-
     pub fn handle(&self) -> &AshDevice {
         &self.device
     }
@@ -172,6 +86,33 @@ impl Device {
 
     pub fn swapchain_loader(&self) -> ash::extensions::khr::Swapchain {
         extensions::khr::Swapchain::new(&self.instance, &self.device)
+    }
+
+    pub fn graphics_queue(self: &Rc<Self>) -> Queue {
+        Queue::new(self, self.graphics_queue)
+    }
+
+    pub fn present_queue(self: &Rc<Self>) -> PresentQueue {
+        PresentQueue::new(self, self.present_queue)
+    }
+
+    pub fn create_surface<T: Window>(&self, window: &Rc<T>) -> TvResult<vk::SurfaceKHR> {
+        Ok(unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )?
+        })
+    }
+
+    pub fn queue_family_index_from_queue_family(&self, queue_family: QueueFamily) -> u32 {
+        match queue_family {
+            QueueFamily::Graphics => self.queue_family_indices.graphics_family,
+            QueueFamily::Present => self.queue_family_indices.present_family,
+        }
     }
 }
 

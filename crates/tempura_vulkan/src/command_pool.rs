@@ -17,7 +17,8 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub(crate) fn new(device: &Rc<Device>, queue_family_index: u32) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>, queue_family: QueueFamily) -> TvResult<Self> {
+        let queue_family_index = device.queue_family_index_from_queue_family(queue_family);
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue_family_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
