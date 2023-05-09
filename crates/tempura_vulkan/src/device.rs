@@ -96,7 +96,7 @@ impl Device {
         PresentQueue::new(self, self.present_queue)
     }
 
-    pub fn create_surface<T: Window>(&self, window: &Rc<T>) -> TvResult<vk::SurfaceKHR> {
+    pub fn create_surface<T: Window>(&self, window: &T) -> TvResult<vk::SurfaceKHR> {
         Ok(unsafe {
             ash_window::create_surface(
                 &self.entry,

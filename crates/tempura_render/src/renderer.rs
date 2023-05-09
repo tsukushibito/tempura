@@ -34,7 +34,7 @@ pub struct Renderer<T: Window> {
 
 impl<T: Window> Renderer<T> {
     pub fn new(device: &Rc<Device>, window: &Rc<T>) -> Result<Self, Box<dyn std::error::Error>> {
-        let swapchain = Swapchain::new(device, window)?;
+        let swapchain = Swapchain::new(device, window.as_ref())?;
 
         let frame_datas = core::array::from_fn(|_| {
             let image_available_semaphore = Semaphore::new(device).unwrap();
@@ -96,7 +96,7 @@ impl<T: Window> Renderer<T> {
                 match vk_result {
                     Some(_) => {
                         self.swapchain.replace(
-                            Swapchain::new(&self.device, &self.window)
+                            Swapchain::new(&self.device, self.window.as_ref())
                                 .expect("Failed to create swapchain"),
                         );
                         return Ok(());
@@ -147,9 +147,7 @@ impl<T: Window> Renderer<T> {
 
     pub fn recreate_swapchain(&self) -> Result<(), Box<dyn std::error::Error>> {
         unsafe { self.device.handle().device_wait_idle()? };
-        self.swapchain.replace(
-            Swapchain::new(&self.device, &self.window).expect("Failed to create swapchain"),
-        );
+        self.swapchain.borrow_mut().recreate(self.window.as_ref())?;
         let attachments = attachments_for_swapchain(&self.swapchain.borrow());
         let subpasses = [vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
