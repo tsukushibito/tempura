@@ -6,10 +6,10 @@ use crate::{Device, ImageView, RenderPass, TvResult};
 
 pub struct Framebuffer {
     device: Rc<Device>,
-    render_pass: Rc<RenderPass>,
+    _render_pass: Rc<RenderPass>,
     framebuffer: vk::Framebuffer,
-    image_view: Rc<ImageView>,
-    layers: u32,
+    _image_view: Rc<ImageView>,
+    _layers: u32,
 }
 
 impl Framebuffer {
@@ -30,10 +30,10 @@ impl Framebuffer {
         let framebuffer = unsafe { device.handle().create_framebuffer(&info, None)? };
         Ok(Self {
             device: device.clone(),
-            render_pass: render_pass.clone(),
+            _render_pass: render_pass.clone(),
             framebuffer,
-            image_view: image_view.clone(),
-            layers,
+            _image_view: image_view.clone(),
+            _layers: layers,
         })
     }
 

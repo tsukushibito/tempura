@@ -52,7 +52,11 @@ impl CommandBuffer {
     }
 
     pub fn end(&self) -> TvResult<()> {
-        unsafe { self.device.handle().end_command_buffer(self.command_buffer) };
+        unsafe {
+            self.device
+                .handle()
+                .end_command_buffer(self.command_buffer)?
+        };
 
         Ok(())
     }

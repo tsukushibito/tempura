@@ -9,7 +9,7 @@ use tempura_vulkan::{
     RenderPass, Semaphore, Swapchain, Window,
 };
 
-use crate::RenderPassCache;
+use crate::render_pass_cache::RenderPassCache;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Device, Swapchain, TvResult};
+use crate::{Device, TvResult};
 
 pub struct Image {
     device: Rc<Device>,
@@ -46,60 +46,16 @@ impl Image {
         })
     }
 
-    pub fn new(
-        device: &Rc<Device>,
-        extent: vk::Extent3D,
-        format: vk::Format,
-        usage: vk::ImageUsageFlags,
-        tiling: vk::ImageTiling,
-        properties: vk::MemoryPropertyFlags,
-    ) -> TvResult<Self> {
-        todo!("Image::new")
-        // let image_create_info = vk::ImageCreateInfo::builder()
-        //     .image_type(vk::ImageType::TYPE_2D)
-        //     .extent(extent)
-        //     .mip_levels(1)
-        //     .array_layers(1)
-        //     .format(format)
-        //     .tiling(tiling)
-        //     .initial_layout(vk::ImageLayout::UNDEFINED)
-        //     .usage(usage)
-        //     .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        //     .samples(vk::SampleCountFlags::TYPE_1)
-        //     .build();
-
-        // let image = unsafe { device.handle().create_image(&image_create_info, None)? };
-
-        // let memory_requirements = unsafe { device.handle().get_image_memory_requirements(image) };
-
-        // let memory_type_index = device
-        //     .handle()
-        //     .find_memory_type_index(memory_requirements.memory_type_bits, properties)?;
-
-        // let memory_allocate_info = vk::MemoryAllocateInfo::builder()
-        //     .allocation_size(memory_requirements.size)
-        //     .memory_type_index(memory_type_index)
-        //     .build();
-
-        // let memory = unsafe {
-        //     device
-        //         .handle()
-        //         .allocate_memory(&memory_allocate_info, None)?
-        // };
-
-        // unsafe { device.handle().bind_image_memory(image, memory, 0)? };
-
-        // Ok(Self {
-        //     device: device.clone(),
-        //     image,
-        //     memory,
-        //     extent,
-        //     format,
-        //     usage,
-        //     tiling,
-        //     properties,
-        // })
-    }
+    // pub fn new(
+    //     device: &Rc<Device>,
+    //     extent: vk::Extent3D,
+    //     format: vk::Format,
+    //     usage: vk::ImageUsageFlags,
+    //     tiling: vk::ImageTiling,
+    //     properties: vk::MemoryPropertyFlags,
+    // ) -> TvResult<Self> {
+    //     todo!("Image::new")
+    // }
 
     pub fn handle(&self) -> vk::Image {
         self.image
