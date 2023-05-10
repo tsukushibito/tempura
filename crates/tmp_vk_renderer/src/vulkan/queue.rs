@@ -2,11 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::command_buffer::CommandBuffer;
-use super::common::TvResult;
-use super::device::Device;
-use super::fence::Fence;
-use super::semaphore::Semaphore;
+use super::{command_buffer::CommandBuffer, device::Device, fence::Fence, semaphore::Semaphore};
+use crate::TmpResult;
 
 pub struct Queue {
     device: Rc<Device>,
@@ -32,7 +29,7 @@ impl Queue {
         wait_stages: &[vk::PipelineStageFlags],
         signal_semaphores: &[&Semaphore],
         fence: Option<&Fence>,
-    ) -> TvResult<()> {
+    ) -> TmpResult<()> {
         let command_buffers = command_buffers
             .iter()
             .map(|cb| cb.handle())

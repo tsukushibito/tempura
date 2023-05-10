@@ -2,11 +2,10 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::command_pool::CommandPool;
-use super::common::TvResult;
-use super::device::Device;
-use super::framebuffer::Framebuffer;
-use super::render_pass::RenderPass;
+use super::{
+    command_pool::CommandPool, device::Device, framebuffer::Framebuffer, render_pass::RenderPass,
+};
+use crate::TmpResult;
 
 pub struct CommandBuffer {
     device: Rc<Device>,
@@ -35,7 +34,7 @@ impl CommandBuffer {
         &self,
         flags: vk::CommandBufferUsageFlags,
         inheritance_info: Option<&vk::CommandBufferInheritanceInfo>,
-    ) -> TvResult<()> {
+    ) -> TmpResult<()> {
         let mut command_buffer_begin_info = vk::CommandBufferBeginInfo::builder().flags(flags);
         if let Some(inheritance_info) = inheritance_info {
             command_buffer_begin_info =
@@ -51,7 +50,7 @@ impl CommandBuffer {
         Ok(())
     }
 
-    pub fn end(&self) -> TvResult<()> {
+    pub fn end(&self) -> TmpResult<()> {
         unsafe {
             self.device
                 .handle()

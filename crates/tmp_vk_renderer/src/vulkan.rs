@@ -1,6 +1,5 @@
 mod command_buffer;
 mod command_pool;
-mod common;
 mod device;
 mod fence;
 mod framebuffer;
@@ -15,7 +14,6 @@ mod swapchain;
 
 pub use command_buffer::*;
 pub use command_pool::*;
-pub use common::*;
 pub use device::*;
 pub use fence::*;
 pub use framebuffer::*;

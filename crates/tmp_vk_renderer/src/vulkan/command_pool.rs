@@ -2,9 +2,11 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::command_buffer::CommandBuffer;
-use super::common::TvResult;
-use super::device::{Device, QueueFamily};
+use super::{
+    command_buffer::CommandBuffer,
+    device::{Device, QueueFamily},
+};
+use crate::TmpResult;
 
 pub struct CommandPool {
     device: Rc<Device>,
@@ -12,7 +14,7 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub fn new(device: &Rc<Device>, queue_family: QueueFamily) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>, queue_family: QueueFamily) -> TmpResult<Self> {
         let queue_family_index = device.queue_family_index_from_queue_family(queue_family);
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue_family_index)
@@ -38,7 +40,7 @@ impl CommandPool {
         self: &Rc<Self>,
         level: vk::CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> TvResult<Vec<CommandBuffer>> {
+    ) -> TmpResult<Vec<CommandBuffer>> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.command_pool)
             .level(level)
@@ -58,7 +60,7 @@ impl CommandPool {
         Ok(command_buffers)
     }
 
-    pub fn reset(&self) -> TvResult<()> {
+    pub fn reset(&self) -> TmpResult<()> {
         unsafe {
             self.device
                 .handle()

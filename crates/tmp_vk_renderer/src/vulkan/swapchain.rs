@@ -2,11 +2,10 @@ use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use super::common::{TvResult, Window};
-use super::device::Device;
-use super::image::Image;
-use super::image_view::ImageView;
-use super::semaphore::Semaphore;
+use super::{
+    device::Device, image::Image, image_view::ImageView, semaphore::Semaphore,
+};
+use crate::{TmpResult, Window};
 
 pub struct Swapchain {
     device: Rc<Device>,
@@ -32,7 +31,7 @@ struct SwapchainAttributes {
 }
 
 impl Swapchain {
-    pub fn new<T: Window>(device: &Rc<Device>, window: &T) -> TvResult<Swapchain> {
+    pub fn new<T: Window>(device: &Rc<Device>, window: &T) -> TmpResult<Swapchain> {
         let attributes = create_swapchain(device, window)?;
         Ok(Self {
             device: device.clone(),
@@ -78,7 +77,7 @@ impl Swapchain {
             .collect::<Vec<Rc<ImageView>>>()
     }
 
-    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TvResult<(u32, Rc<ImageView>)> {
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> TmpResult<(u32, Rc<ImageView>)> {
         let swapchain_loader = self.device.swapchain_loader();
         let (image_index, _) = unsafe {
             swapchain_loader.acquire_next_image(
@@ -91,7 +90,7 @@ impl Swapchain {
         Ok((image_index, self.image_views[image_index as usize].clone()))
     }
 
-    pub fn recreate<T: Window>(&mut self, window: &T) -> TvResult<()> {
+    pub fn recreate<T: Window>(&mut self, window: &T) -> TmpResult<()> {
         destroy_swapchain_and_surface(&self.device, self.swapchain, self.surface);
         let attributes = create_swapchain(&self.device, window)?;
 
@@ -118,7 +117,7 @@ fn choose_swapchain_format(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> TvResult<vk::SurfaceFormatKHR> {
+) -> TmpResult<vk::SurfaceFormatKHR> {
     let formats =
         unsafe { surface_loader.get_physical_device_surface_formats(*physical_device, *surface)? };
 
@@ -137,7 +136,7 @@ fn choose_swapchain_present_mode(
     surface_loader: &extensions::khr::Surface,
     physical_device: &vk::PhysicalDevice,
     surface: &vk::SurfaceKHR,
-) -> TvResult<vk::PresentModeKHR> {
+) -> TmpResult<vk::PresentModeKHR> {
     let present_modes = unsafe {
         surface_loader.get_physical_device_surface_present_modes(*physical_device, *surface)?
     };
@@ -151,7 +150,7 @@ fn choose_swapchain_present_mode(
     Ok(vk::PresentModeKHR::FIFO)
 }
 
-fn create_swapchain<T: Window>(device: &Rc<Device>, window: &T) -> TvResult<SwapchainAttributes> {
+fn create_swapchain<T: Window>(device: &Rc<Device>, window: &T) -> TmpResult<SwapchainAttributes> {
     let surface = device.create_surface(window)?;
     let surface_loader = device.surface_loader();
     let physical_device = device.physical_device();

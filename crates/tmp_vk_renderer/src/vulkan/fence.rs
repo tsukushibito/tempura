@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
 use super::device::Device;
+use crate::TmpResult;
 
 pub struct Fence {
     device: Rc<Device>,
@@ -11,7 +11,7 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub fn new(device: &Rc<Device>, signaled: bool) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>, signaled: bool) -> TmpResult<Self> {
         let fence_create_info = vk::FenceCreateInfo::builder()
             .flags(if signaled {
                 vk::FenceCreateFlags::SIGNALED
@@ -32,7 +32,7 @@ impl Fence {
         self.fence
     }
 
-    pub fn wait(&self) -> TvResult<()> {
+    pub fn wait(&self) -> TmpResult<()> {
         unsafe {
             self.device
                 .handle()
@@ -42,7 +42,7 @@ impl Fence {
         Ok(())
     }
 
-    pub fn reset(&self) -> TvResult<()> {
+    pub fn reset(&self) -> TmpResult<()> {
         unsafe {
             self.device.handle().reset_fences(&[self.fence])?;
         }

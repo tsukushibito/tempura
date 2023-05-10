@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
 use super::device::Device;
+use crate::TmpResult;
 
 pub struct Image {
     device: Rc<Device>,
@@ -23,7 +23,7 @@ impl Image {
         image: vk::Image,
         extent: vk::Extent2D,
         format: vk::Format,
-    ) -> TvResult<Self> {
+    ) -> TmpResult<Self> {
         let extent = vk::Extent3D {
             width: extent.width,
             height: extent.height,

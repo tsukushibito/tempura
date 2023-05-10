@@ -3,11 +3,14 @@ use std::{
     rc::Rc,
 };
 
-use ash::vk;
-use crate::vulkan::{
-    attachments_for_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer, QueueFamily,
-    RenderPass, Semaphore, Swapchain, Window,
+use crate::{
+    vulkan::{
+        attachments_for_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer,
+        QueueFamily, RenderPass, Semaphore, Swapchain,
+    },
+    Window,
 };
+use ash::vk;
 
 use crate::render_pass_cache::RenderPassCache;
 

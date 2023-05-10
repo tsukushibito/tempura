@@ -5,12 +5,9 @@ use ash::{extensions, Device as AshDevice};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use super::common::{TvResult, Window};
-use super::present_queue::PresentQueue;
-use super::queue::Queue;
+use super::{present_queue::PresentQueue, queue::Queue};
+use crate::{TmpResult, Window};
 
-// use crate::{PresentQueue, Queue, QueueFamily, QueueFamilyIndices, TvResult, Window};
-//
 pub struct QueueFamilyIndices {
     pub graphics_family: u32,
     pub present_family: u32,
@@ -33,7 +30,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new<T: Window>(window: &Rc<T>) -> TvResult<Self> {
+    pub fn new<T: Window>(window: &Rc<T>) -> TmpResult<Self> {
         let entry = unsafe { Entry::load()? };
         let instance = create_instance(&entry, &window.raw_display_handle())?;
 
@@ -110,7 +107,7 @@ impl Device {
         PresentQueue::new(self, self.present_queue)
     }
 
-    pub fn create_surface<T: Window>(&self, window: &T) -> TvResult<vk::SurfaceKHR> {
+    pub fn create_surface<T: Window>(&self, window: &T) -> TmpResult<vk::SurfaceKHR> {
         Ok(unsafe {
             ash_window::create_surface(
                 &self.entry,
@@ -140,7 +137,7 @@ impl Drop for Device {
     }
 }
 
-fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> TvResult<Instance> {
+fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> TmpResult<Instance> {
     let app_name = CString::new("tempura")?;
     let engine_name = CString::new("tempura")?;
 
@@ -224,7 +221,7 @@ fn pick_physical_device_and_queue_family(
     entry: &Entry,
     instance: &Instance,
     surface: &vk::SurfaceKHR,
-) -> TvResult<(vk::PhysicalDevice, QueueFamilyIndices)> {
+) -> TmpResult<(vk::PhysicalDevice, QueueFamilyIndices)> {
     let physical_devices = unsafe { instance.enumerate_physical_devices()? };
     if physical_devices.is_empty() {
         return Err("No Vulkan-compatible devices found".into());
@@ -288,7 +285,7 @@ fn create_device(
     instance: &Instance,
     physical_device: &vk::PhysicalDevice,
     queue_family_indices: &QueueFamilyIndices,
-) -> TvResult<AshDevice> {
+) -> TmpResult<AshDevice> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
         // #[cfg(any(target_os = "macos", target_os = "ios"))]

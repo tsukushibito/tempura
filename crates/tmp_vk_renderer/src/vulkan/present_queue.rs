@@ -2,10 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
-use super::device::Device;
-use super::semaphore::Semaphore;
-use super::swapchain::Swapchain;
+use super::{device::Device, semaphore::Semaphore, swapchain::Swapchain};
+use crate::TmpResult;
 
 pub struct PresentQueue {
     device: Rc<Device>,
@@ -29,7 +27,7 @@ impl PresentQueue {
         swapchain: &Swapchain,
         image_index: u32,
         wait_semaphores: &[&Semaphore],
-    ) -> TvResult<()> {
+    ) -> TmpResult<()> {
         let wait_semaphores = wait_semaphores
             .iter()
             .map(|s| s.handle())

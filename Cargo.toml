@@ -7,12 +7,12 @@ edition = "2021"
 members = ["crates/*"]
 
 [dependencies]
-tempura_render = { path = "crates/tempura_render" }
+tmp_vk_renderer = { path = "crates/tmp_vk_renderer" }
 
 [dev-dependencies]
 raw-window-handle = "0.5"
-winit = "0.27"
+winit = "0.28.5"
 
 [[example]]
-name = "render"
-path = "examples/render/render.rs"
+name = "renderer"
+path = "examples/renderer/renderer.rs"

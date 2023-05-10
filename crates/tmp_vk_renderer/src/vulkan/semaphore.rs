@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
 use super::device::Device;
+use crate::TmpResult;
 
 pub struct Semaphore {
     device: Rc<Device>,
@@ -11,7 +11,7 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(device: &Rc<Device>) -> TvResult<Self> {
+    pub fn new(device: &Rc<Device>) -> TmpResult<Self> {
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
 
         let semaphore = unsafe {

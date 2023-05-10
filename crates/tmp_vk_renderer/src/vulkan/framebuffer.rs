@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
-use super::device::Device;
-use super::image_view::ImageView;
-use super::render_pass::RenderPass;
+use super::{
+    device::Device, image_view::ImageView, render_pass::RenderPass,
+};
+use crate::TmpResult;
 
 pub struct Framebuffer {
     device: Rc<Device>,
@@ -21,7 +21,7 @@ impl Framebuffer {
         render_pass: &Rc<RenderPass>,
         image_view: &Rc<ImageView>,
         layers: u32,
-    ) -> TvResult<Self> {
+    ) -> TmpResult<Self> {
         let info = vk::FramebufferCreateInfo::builder()
             .render_pass(render_pass.handle())
             .attachments(&[image_view.handle()])

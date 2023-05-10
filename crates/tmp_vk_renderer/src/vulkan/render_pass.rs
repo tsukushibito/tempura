@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use super::common::TvResult;
 use super::device::Device;
+use crate::TmpResult;
 
 pub struct RenderPass {
     device: Rc<Device>,
@@ -19,7 +19,7 @@ impl RenderPass {
         attachments: &[vk::AttachmentDescription],
         subpasses: &[vk::SubpassDescription],
         dependencies: &[vk::SubpassDependency],
-    ) -> TvResult<Self> {
+    ) -> TmpResult<Self> {
         let info = vk::RenderPassCreateInfo::builder()
             .attachments(attachments)
             .subpasses(subpasses)
