@@ -2,7 +2,11 @@ use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use crate::{Device, Image, ImageView, Semaphore, TvResult, Window};
+use super::common::{TvResult, Window};
+use super::device::Device;
+use super::image::Image;
+use super::image_view::ImageView;
+use super::semaphore::Semaphore;
 
 pub struct Swapchain {
     device: Rc<Device>,

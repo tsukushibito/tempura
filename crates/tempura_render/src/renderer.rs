@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use tempura_vulkan::{
+use crate::vulkan::{
     attachments_for_swapchain, CommandBuffer, CommandPool, Device, Fence, Framebuffer, QueueFamily,
     RenderPass, Semaphore, Swapchain, Window,
 };

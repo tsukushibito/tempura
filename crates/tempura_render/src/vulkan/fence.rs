@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Device, TvResult};
+use super::common::TvResult;
+use super::device::Device;
 
 pub struct Fence {
     device: Rc<Device>,

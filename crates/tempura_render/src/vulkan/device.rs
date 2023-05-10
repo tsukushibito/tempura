@@ -5,7 +5,21 @@ use ash::{extensions, Device as AshDevice};
 use ash::{vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 
-use crate::{PresentQueue, Queue, QueueFamily, QueueFamilyIndices, TvResult, Window};
+use super::common::{TvResult, Window};
+use super::present_queue::PresentQueue;
+use super::queue::Queue;
+
+// use crate::{PresentQueue, Queue, QueueFamily, QueueFamilyIndices, TvResult, Window};
+//
+pub struct QueueFamilyIndices {
+    pub graphics_family: u32,
+    pub present_family: u32,
+}
+
+pub enum QueueFamily {
+    Graphics,
+    Present,
+}
 
 pub struct Device {
     entry: Entry,

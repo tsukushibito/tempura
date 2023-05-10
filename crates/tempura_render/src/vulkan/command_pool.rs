@@ -2,14 +2,9 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::CommandBuffer;
-use crate::Device;
-use crate::TvResult;
-
-pub enum QueueFamily {
-    Graphics,
-    Present,
-}
+use super::command_buffer::CommandBuffer;
+use super::common::TvResult;
+use super::device::{Device, QueueFamily};
 
 pub struct CommandPool {
     device: Rc<Device>,

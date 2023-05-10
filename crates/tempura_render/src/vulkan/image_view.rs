@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Device, Image, TvResult};
+use super::common::TvResult;
+use super::device::Device;
+use super::image::Image;
 
 pub struct ImageView {
     device: Rc<Device>,

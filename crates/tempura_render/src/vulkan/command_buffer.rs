@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::CommandPool;
-use crate::Device;
-use crate::Framebuffer;
-use crate::RenderPass;
-use crate::TvResult;
+use super::command_pool::CommandPool;
+use super::common::TvResult;
+use super::device::Device;
+use super::framebuffer::Framebuffer;
+use super::render_pass::RenderPass;
 
 pub struct CommandBuffer {
     device: Rc<Device>,

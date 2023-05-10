@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::Swapchain;
+use super::swapchain::Swapchain;
 
 pub fn attachments_for_swapchain(swapchain: &Swapchain) -> Vec<vk::AttachmentDescription> {
     vec![vk::AttachmentDescription::builder()

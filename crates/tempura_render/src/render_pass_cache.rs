@@ -5,8 +5,8 @@ use std::{
     rc::Rc,
 };
 
+use crate::vulkan::{Device, RenderPass};
 use ash::vk;
-use tempura_vulkan::{Device, RenderPass};
 
 pub(crate) struct RenderPassCache {
     render_passes: RefCell<HashMap<u64, Rc<RenderPass>>>,

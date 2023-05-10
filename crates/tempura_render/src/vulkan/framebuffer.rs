@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Device, ImageView, RenderPass, TvResult};
+use super::common::TvResult;
+use super::device::Device;
+use super::image_view::ImageView;
+use super::render_pass::RenderPass;
 
 pub struct Framebuffer {
     device: Rc<Device>,

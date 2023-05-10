@@ -2,7 +2,11 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{CommandBuffer, Device, Fence, Semaphore, TvResult};
+use super::command_buffer::CommandBuffer;
+use super::common::TvResult;
+use super::device::Device;
+use super::fence::Fence;
+use super::semaphore::Semaphore;
 
 pub struct Queue {
     device: Rc<Device>,

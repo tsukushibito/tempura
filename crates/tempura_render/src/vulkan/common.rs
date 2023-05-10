@@ -6,8 +6,3 @@ pub trait Window: HasRawDisplayHandle + HasRawWindowHandle + std::any::Any {
     fn window_size(&self) -> (u32, u32);
     fn as_any(&self) -> &dyn std::any::Any;
 }
-
-pub struct QueueFamilyIndices {
-    pub graphics_family: u32,
-    pub present_family: u32,
-}

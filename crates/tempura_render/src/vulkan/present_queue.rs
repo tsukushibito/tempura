@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use ash::vk;
 
-use crate::{Device, Semaphore, Swapchain, TvResult};
+use super::common::TvResult;
+use super::device::Device;
+use super::semaphore::Semaphore;
+use super::swapchain::Swapchain;
 
 pub struct PresentQueue {
     device: Rc<Device>,
