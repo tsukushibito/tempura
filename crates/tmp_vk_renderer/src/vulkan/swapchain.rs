@@ -2,9 +2,7 @@ use std::rc::Rc;
 
 use ash::{extensions, vk};
 
-use super::{
-    device::Device, image::Image, image_view::ImageView, semaphore::Semaphore,
-};
+use super::{device::Device, image::Image, image_view::ImageView, semaphore::Semaphore};
 use crate::{TmpResult, Window};
 
 pub struct Swapchain {
@@ -156,9 +154,7 @@ fn create_swapchain<T: Window>(device: &Rc<Device>, window: &T) -> TmpResult<Swa
     let physical_device = device.physical_device();
 
     let surface_format = choose_swapchain_format(&surface_loader, &physical_device, &surface)?;
-
     let present_mode = choose_swapchain_present_mode(&surface_loader, &physical_device, &surface)?;
-
     let surface_capabilities = unsafe {
         surface_loader.get_physical_device_surface_capabilities(physical_device, surface)?
     };
