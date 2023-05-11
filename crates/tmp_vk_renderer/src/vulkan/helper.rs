@@ -12,3 +12,14 @@ pub fn attachments_for_swapchain(swapchain: &Swapchain) -> Vec<vk::AttachmentDes
         .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
         .build()]
 }
+
+pub struct VertexBuffer {
+    pub buffer: vk::Buffer,
+    pub memory: vk::DeviceMemory,
+    pub size: vk::DeviceSize,
+}
+
+pub struct VertexLayout {
+    pub bindings: Vec<vk::VertexInputBindingDescription>,
+    pub attributes: Vec<vk::VertexInputAttributeDescription>,
+}
