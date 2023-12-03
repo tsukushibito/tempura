@@ -1,8 +1,10 @@
 [package]
-name = "tmp_task_graph"
+name = "tmp_core"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+uuid = { version = "1.6", features = ["v4"] }
+env_logger = { version = "0.10" }
