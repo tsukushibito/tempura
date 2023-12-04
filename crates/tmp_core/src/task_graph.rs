@@ -235,6 +235,7 @@ impl TaskGraph {
     /// Executes all tasks in the graph according to their dependencies.
     ///
     /// Tasks are executed in parallel where possible, respecting their dependency constraints.
+
     pub fn execute(&mut self) {
         let sorted_tasks = self.topological_sort();
         let task_groups = self.group_tasks(sorted_tasks);

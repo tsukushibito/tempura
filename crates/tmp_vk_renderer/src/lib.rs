@@ -1,7 +1,3 @@
-mod common;
-mod render_pass_cache;
-mod renderer;
-pub mod vulkan;
+mod vk_renderer;
 
-pub use common::*;
-pub use renderer::*;
+pub use vk_renderer::VkRenderer;

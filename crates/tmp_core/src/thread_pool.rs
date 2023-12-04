@@ -1,3 +1,4 @@
+use log;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -49,12 +50,10 @@ impl ThreadPool {
 
     /// Waits for all jobs to complete and then terminates the workers.
     pub fn join(&mut self) {
-        // 各ワーカーに終了を指示
         for _ in &self.workers {
             self.sender.send(Message::Terminate).unwrap();
         }
 
-        // 各ワーカースレッドを結合（join）
         for worker in &mut self.workers {
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
@@ -81,11 +80,11 @@ impl Worker {
 
             match message {
                 Message::Job(job) => {
-                    println!("Worker {} got a job; executing.", id);
+                    log::debug!("Worker {} got a job; executing.", id);
                     job();
                 }
                 Message::Terminate => {
-                    println!("Worker {} was told to terminate.", id);
+                    log::debug!("Worker {} was told to terminate.", id);
                     break;
                 }
             }
