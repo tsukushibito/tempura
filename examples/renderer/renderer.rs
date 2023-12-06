@@ -9,23 +9,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use tmp_vk_renderer::VkRenderer;
-
-struct WinitWindow {
-    pub window: Window,
-}
-
-unsafe impl HasRawDisplayHandle for WinitWindow {
-    fn raw_display_handle(&self) -> raw_window_handle::RawDisplayHandle {
-        self.window.raw_display_handle()
-    }
-}
-
-unsafe impl HasRawWindowHandle for WinitWindow {
-    fn raw_window_handle(&self) -> raw_window_handle::RawWindowHandle {
-        self.window.raw_window_handle()
-    }
-}
+use tmp_vk_renderer::{VkRenderer, VkSwapchain};
 
 fn main() {
     println!("render example.");
@@ -36,15 +20,18 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let winit_window = Rc::new(WinitWindow { window });
-
     let renderer = Rc::new(
-        VkRenderer::new(
-            &winit_window.raw_display_handle(),
-            &winit_window.raw_window_handle(),
-        )
-        .unwrap(),
+        VkRenderer::new(&window.raw_display_handle(), &window.raw_window_handle()).unwrap(),
     );
+
+    let swapchain = VkSwapchain::new(
+        &renderer,
+        &window.raw_display_handle(),
+        &window.raw_window_handle(),
+        window.inner_size().width,
+        window.inner_size().height,
+    )
+    .unwrap();
 
     event_loop.run_return(|event, _, control_flow| {
         control_flow.set_wait();
@@ -52,11 +39,11 @@ fn main() {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
-            } if window_id == winit_window.window.id() => control_flow.set_exit(),
+            } if window_id == window.id() => control_flow.set_exit(),
             Event::WindowEvent {
                 window_id,
                 event: WindowEvent::Resized(size),
-            } if window_id == winit_window.window.id() => {
+            } if window_id == window.id() => {
                 println!("window resized. size: {:?}", size);
             }
             Event::MainEventsCleared => {}

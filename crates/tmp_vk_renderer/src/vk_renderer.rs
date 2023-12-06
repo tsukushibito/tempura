@@ -4,14 +4,14 @@ use raw_window_handle::{HasRawDisplayHandle, RawDisplayHandle, RawWindowHandle};
 use std::ffi::{c_char, CString};
 
 pub struct VkRenderer {
-    entry: Entry,       // Vulkanエントリポイント
-    instance: Instance, // Vulkanインスタンス
-    debug_utils_messenger: vk::DebugUtilsMessengerEXT,
-    physical_device: vk::PhysicalDevice, // 物理デバイス
-    queue_family_indices: QueueFamilyIndices,
-    device: Device,            // 論理デバイス
-    graphics_queue: vk::Queue, // グラフィックスキュー
-    present_queue: vk::Queue,
+    pub(crate) entry: Entry,       // Vulkanエントリポイント
+    pub(crate) instance: Instance, // Vulkanインスタンス
+    pub(crate) debug_utils_messenger: vk::DebugUtilsMessengerEXT,
+    pub(crate) physical_device: vk::PhysicalDevice, // 物理デバイス
+    pub(crate) queue_family_indices: QueueFamilyIndices,
+    pub(crate) device: Device,            // 論理デバイス
+    pub(crate) graphics_queue: vk::Queue, // グラフィックスキュー
+    pub(crate) present_queue: vk::Queue,
     // command_pool: vk::CommandPool,       // コマンドプール
 }
 
@@ -49,5 +49,17 @@ impl VkRenderer {
             graphics_queue,
             present_queue,
         })
+    }
+}
+
+impl Drop for VkRenderer {
+    fn drop(&mut self) {
+        _ = unsafe { self.device.device_wait_idle() };
+        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&self.entry, &self.instance);
+        unsafe {
+            debug_utils_loader.destroy_debug_utils_messenger(self.debug_utils_messenger, None)
+        };
+        unsafe { self.device.destroy_device(None) };
+        unsafe { self.instance.destroy_instance(None) };
     }
 }
