@@ -1,3 +1,4 @@
+use libloading;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::rc::Rc;
 use winit::{
@@ -37,7 +38,13 @@ fn main() {
 
     let winit_window = Rc::new(WinitWindow { window });
 
-    let renderer = Rc::new(VkRenderer::new(&winit_window.raw_display_handle()).unwrap());
+    let renderer = Rc::new(
+        VkRenderer::new(
+            &winit_window.raw_display_handle(),
+            &winit_window.raw_window_handle(),
+        )
+        .unwrap(),
+    );
 
     event_loop.run_return(|event, _, control_flow| {
         control_flow.set_wait();

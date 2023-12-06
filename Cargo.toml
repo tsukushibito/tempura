@@ -12,6 +12,7 @@ tmp_vk_renderer = { path = "crates/tmp_vk_renderer" }
 [dev-dependencies]
 raw-window-handle = "0.5"
 winit = "0.28.5"
+libloading = "0.8"
 
 [[example]]
 name = "renderer"

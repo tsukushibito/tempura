@@ -1,4 +1,4 @@
-use ash::{extensions, vk, Device, Entry, Instance};
+use ash::{extensions, vk, Entry, Instance};
 use raw_window_handle::RawDisplayHandle;
 use std::ffi::{c_char, CString};
 
