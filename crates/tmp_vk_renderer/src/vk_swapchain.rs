@@ -134,11 +134,15 @@ impl VkSwapchain {
 
 impl Drop for VkSwapchain {
     fn drop(&mut self) {
-        let entry = &self.renderer.entry;
-        let instance = &self.renderer.instance;
         let device = &self.renderer.device;
 
         unsafe { device.device_wait_idle().expect("device_wait_idle error") };
+
+        for frame_resource in &self.frame_resources {
+            unsafe { device.destroy_command_pool(frame_resource.command_pool, None) };
+            unsafe { device.destroy_image_view(frame_resource.image_view, None) };
+            // unsafe { device.destroy_image(frame_resource.image, None) };
+        }
 
         unsafe {
             self.swapchain_loader

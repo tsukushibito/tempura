@@ -1,7 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ffi::{c_char, CString},
+    ffi::{c_char, CStr, CString},
 };
 
 use crate::{common::*, VkSwapchain};
@@ -265,6 +265,20 @@ fn create_instance(entry: &Entry, display_handle: &RawDisplayHandle) -> TmpResul
             }
         })
         .collect::<Vec<*const c_char>>();
+
+    for &c_str_ptr in &layer_names {
+        // 安全性のためにnullチェックを行う
+        if !c_str_ptr.is_null() {
+            // C文字列をRustのCStr型に変換
+            let c_str = unsafe { CStr::from_ptr(c_str_ptr) };
+
+            // CStr型をRustの文字列スライスに変換
+            if let Ok(str_slice) = c_str.to_str() {
+                // ログ出力
+                println!("Layer Name: {}", str_slice);
+            }
+        }
+    }
 
     let mut extension_names = ash_window::enumerate_required_extensions(*display_handle)?.to_vec();
     extension_names.push(extensions::ext::DebugUtils::name().as_ptr());
