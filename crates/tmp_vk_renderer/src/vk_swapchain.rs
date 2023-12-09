@@ -1,24 +1,37 @@
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use ash::{vk, Device};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::{common::*, VkRenderer};
 
+pub(crate) struct FrameResource {
+    pub image: vk::Image,
+    pub image_view: vk::ImageView,
+    pub command_pool: vk::CommandPool,
+    pub command_buffer: vk::CommandBuffer,
+    pub image_available_semaphore: vk::Semaphore, // イメージ取得用セマフォ
+    pub render_finished_semaphore: vk::Semaphore, // レンダリング完了用セマフォ
+    pub in_flight_fence: vk::Fence,               // レンダリング操作の完了を追跡するフェンス
+}
+
 pub struct VkSwapchain {
     renderer: Rc<VkRenderer>,
     surface_loader: ash::extensions::khr::Surface,
     swapchain_loader: ash::extensions::khr::Swapchain,
     surface: vk::SurfaceKHR,
-    swapchain: vk::SwapchainKHR,
-    image_format: vk::Format,
-    image_color_space: vk::ColorSpaceKHR,
+    pub(crate) swapchain: vk::SwapchainKHR,
+    pub(crate) image_format: vk::Format,
+    pub(crate) image_color_space: vk::ColorSpaceKHR,
     pub(crate) image_extent: vk::Extent2D,
     present_mode: vk::PresentModeKHR,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    command_pools: Vec<vk::CommandPool>,
-    pub(crate) command_buffers: Vec<vk::CommandBuffer>,
+    frame_resources: Vec<FrameResource>,
+    current_frame: Cell<usize>,
+    next_frame: Cell<usize>,
+    // images: Vec<vk::Image>,
+    // image_views: Vec<vk::ImageView>,
+    // command_pools: Vec<vk::CommandPool>,
+    // pub(crate) command_buffers: Vec<vk::CommandBuffer>,
     // image_available_semaphores: Vec<vk::Semaphore>, // イメージ取得用セマフォ
     // render_finished_semaphores: Vec<vk::Semaphore>, // レンダリング完了用セマフォ
     // in_flight_fences: Vec<vk::Fence>,               // レンダリング操作の完了を追跡するフェンス
@@ -45,10 +58,7 @@ impl VkSwapchain {
             image_color_space,
             image_extent,
             present_mode,
-            images,
-            image_views,
-            command_pools,
-            command_buffers,
+            frame_resources,
         ) = create_swapchain_resources(
             &renderer,
             &surface_loader,
@@ -58,6 +68,7 @@ impl VkSwapchain {
             window_width,
             window_height,
         )?;
+
         Ok(Self {
             renderer: renderer.clone(),
             surface_loader,
@@ -68,11 +79,56 @@ impl VkSwapchain {
             image_color_space,
             image_extent,
             present_mode,
-            images,
-            image_views,
-            command_pools,
-            command_buffers,
+            frame_resources,
+            current_frame: Cell::new(0),
+            next_frame: Cell::new(0),
         })
+    }
+
+    pub(crate) fn wait_for_current_frame_fence(&self) {
+        let frame_resource = &self.frame_resources[self.current_frame.get()];
+        let fences = [frame_resource.in_flight_fence];
+        unsafe {
+            self.renderer
+                .device
+                .wait_for_fences(&fences, true, std::u64::MAX)
+                .expect("Failed to wait for Fence.")
+        }
+    }
+
+    pub(crate) fn acquire_next_frame_resource(&self) -> TmpResult<(&FrameResource, bool)> {
+        let semaphre = &self.frame_resources[self.current_frame.get()].image_available_semaphore;
+        let (index, is_suboptimal) = unsafe {
+            let device = &self.renderer.device;
+            self.swapchain_loader.acquire_next_image(
+                self.swapchain,
+                std::u64::MAX,
+                *semaphre,
+                vk::Fence::null(),
+            )?
+        };
+        self.next_frame.set(index as usize);
+        Ok((&self.frame_resources[index as usize], is_suboptimal))
+    }
+
+    pub(crate) fn present(
+        &self,
+        queue: vk::Queue,
+        wait_semaphore: vk::Semaphore,
+    ) -> TmpResult<bool> {
+        let swapchains = [self.swapchain];
+        let image_indices = [self.next_frame.get() as u32];
+        let wait_semaphores = [wait_semaphore];
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&wait_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        let result = unsafe { self.swapchain_loader.queue_present(queue, &present_info)? };
+
+        self.current_frame
+            .set((self.current_frame.get() + 1) % self.frame_resources.len());
+        Ok(result)
     }
 }
 
@@ -108,10 +164,7 @@ fn create_swapchain_resources(
     vk::ColorSpaceKHR,
     vk::Extent2D,
     vk::PresentModeKHR,
-    Vec<vk::Image>,
-    Vec<vk::ImageView>,
-    Vec<vk::CommandPool>,
-    Vec<vk::CommandBuffer>,
+    Vec<FrameResource>,
 )> {
     let entry = &renderer.entry;
     let instance = &renderer.instance;
@@ -212,7 +265,47 @@ fn create_swapchain_resources(
         .iter()
         .map(|&command_pool| allocate_command_buffers(device, command_pool, 1))
         .collect::<TmpResult<Vec<Vec<vk::CommandBuffer>>>>()?;
-    let command_buffers = tmp.into_iter().flat_map(|cb| cb).collect();
+    let command_buffers = tmp
+        .into_iter()
+        .flat_map(|cb| cb)
+        .collect::<Vec<vk::CommandBuffer>>();
+
+    let image_available_semaphores = (0..image_count)
+        .map(|_| {
+            let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+            let result = unsafe { device.create_semaphore(&semaphore_create_info, None) };
+            result.map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        })
+        .collect::<TmpResult<Vec<vk::Semaphore>>>()?;
+
+    let render_finished_semaphores = (0..image_count)
+        .map(|_| {
+            let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+            let result = unsafe { device.create_semaphore(&semaphore_create_info, None) };
+            result.map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        })
+        .collect::<TmpResult<Vec<vk::Semaphore>>>()?;
+
+    let in_flight_fences = (0..image_count)
+        .map(|_| {
+            let fence_create_info =
+                vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            let result = unsafe { device.create_fence(&fence_create_info, None) };
+            result.map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        })
+        .collect::<TmpResult<Vec<vk::Fence>>>()?;
+
+    let frame_resources = (0..image_count)
+        .map(|i| FrameResource {
+            image: images[i],
+            image_view: image_views[i],
+            command_pool: command_pools[i],
+            command_buffer: command_buffers[i],
+            image_available_semaphore: image_available_semaphores[i],
+            render_finished_semaphore: render_finished_semaphores[i],
+            in_flight_fence: in_flight_fences[i],
+        })
+        .collect::<Vec<FrameResource>>();
 
     Ok((
         surface,
@@ -221,10 +314,7 @@ fn create_swapchain_resources(
         surface_format.color_space,
         surface_resolution,
         present_mode,
-        images,
-        image_views,
-        command_pools,
-        command_buffers,
+        frame_resources,
     ))
 }
 

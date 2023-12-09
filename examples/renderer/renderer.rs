@@ -1,4 +1,3 @@
-use libloading;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::rc::Rc;
 use winit::{
@@ -6,7 +5,7 @@ use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
     platform::run_return::EventLoopExtRunReturn,
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 use tmp_vk_renderer::{VkRenderer, VkSwapchain};
@@ -46,7 +45,12 @@ fn main() {
             } if window_id == window.id() => {
                 println!("window resized. size: {:?}", size);
             }
-            Event::MainEventsCleared => {}
+            Event::RedrawRequested(_) => {
+                renderer.render(&swapchain).expect("Failed to render.");
+            }
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            }
             _ => (),
         }
     });

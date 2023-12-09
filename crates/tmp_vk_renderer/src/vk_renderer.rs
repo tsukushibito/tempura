@@ -1,4 +1,5 @@
 use std::{
+    cell::{Cell, RefCell},
     collections::HashMap,
     ffi::{c_char, CString},
 };
@@ -26,7 +27,9 @@ pub struct VkRenderer {
     /// Queue for presentation operations.
     present_queue: vk::Queue,
     /// Collection of framebuffers, mapped by their image views.
-    framebuffers: HashMap<vk::ImageView, vk::Framebuffer>,
+    framebuffers: RefCell<HashMap<vk::ImageView, vk::Framebuffer>>,
+
+    render_pass: Cell<Option<vk::RenderPass>>,
 }
 
 impl VkRenderer {
@@ -71,50 +74,121 @@ impl VkRenderer {
             graphics_queue,
             present_queue,
             framebuffers: Default::default(),
+            render_pass: Cell::new(None),
         })
     }
 
     /// Renders using the given swapchain.
-    pub fn render(&mut self, swapchain: &VkSwapchain) {
-        // 現在のイメージインデックスを取得
-        let image_index = self.get_current_image_index(swapchain);
+    pub fn render(&self, swapchain: &VkSwapchain) -> TmpResult<()> {
+        if let Some(_) = self.render_pass.get() {
+        } else {
+            let render_pass = create_render_pass(&self.device, swapchain.image_format, None)?;
+            self.render_pass.set(Some(render_pass));
+        }
+
+        swapchain.wait_for_current_frame_fence();
+
+        let (frame_resource, is_suboptimal) = swapchain.acquire_next_frame_resource()?;
+
+        let framebuffer: vk::Framebuffer = *self
+            .framebuffers
+            .borrow_mut()
+            .entry(frame_resource.image_view)
+            .or_insert(create_framebuffer(
+                &self.device,
+                &self.render_pass.get().unwrap(),
+                &frame_resource.image_view,
+                &swapchain.image_extent,
+            )?);
+
+        let command_buffer = &frame_resource.command_buffer;
+        let image_available_semaphore = &frame_resource.image_available_semaphore;
+        let render_finished_semaphore = &frame_resource.render_finished_semaphore;
+        let in_flight_fence = &frame_resource.in_flight_fence;
 
         // コマンドバッファの開始
-        let command_buffer = swapchain.command_buffers[image_index as usize];
-        self.begin_command_buffer(command_buffer);
+        self.begin_command_buffer(command_buffer)?;
 
         // クリア操作の記録
-        self.record_clear_command(command_buffer, swapchain);
+        self.record_clear_command(*command_buffer, framebuffer, swapchain.image_extent);
 
         // コマンドバッファの終了
-        self.end_command_buffer(command_buffer);
+        self.end_command_buffer(command_buffer)?;
 
         // コマンドバッファをキューにサブミット
-        self.submit_command_buffer(command_buffer, swapchain);
+        let command_buffers = [*command_buffer];
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(&[*image_available_semaphore])
+            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+            .command_buffers(&command_buffers)
+            .signal_semaphores(&[*render_finished_semaphore])
+            .build();
+
+        unsafe {
+            self.device
+                .queue_submit(self.graphics_queue, &[submit_info], *in_flight_fence)?;
+        }
+
+        swapchain.present(self.present_queue, frame_resource.render_finished_semaphore)?;
+
+        Ok(())
     }
 
     pub(crate) fn release_framebuffer(&mut self, image_view: &vk::ImageView) {
-        self.framebuffers.remove(image_view);
+        self.framebuffers.borrow_mut().remove(image_view);
     }
 
-    fn get_current_image_index(&self, swapchain: &VkSwapchain) -> usize {
-        // スワップチェーンから現在のイメージインデックスを取得するロジック
-        todo!();
+    fn begin_command_buffer(&self, command_buffer: &vk::CommandBuffer) -> TmpResult<()> {
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE); // 通常はSIMULTANEOUS_USEを指定
+
+        unsafe {
+            self.device
+                .begin_command_buffer(*command_buffer, &begin_info)?
+        };
+        Ok(())
     }
 
-    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer) {
-        // コマンドバッファの開始ロジック
-        todo!();
+    fn record_clear_command(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        framebuffer: vk::Framebuffer,
+        extent: vk::Extent2D,
+    ) {
+        let clear_color = vk::ClearColorValue {
+            float32: [0.0, 0.5, 0.5, 1.0], // クリアする色（ここでは黒）
+        };
+
+        let clear_values = [vk::ClearValue { color: clear_color }];
+        let render_area = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent,
+        };
+
+        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass.get().unwrap()) // 適切なレンダーパスを指定
+            .framebuffer(framebuffer) // 適切なフレームバッファを指定
+            .render_area(render_area)
+            .clear_values(&clear_values);
+
+        unsafe {
+            self.device.cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            // ここで追加のレンダリングコマンドを記録できます。
+
+            self.device.cmd_end_render_pass(command_buffer);
+        }
     }
 
-    fn record_clear_command(&self, command_buffer: vk::CommandBuffer, swapchain: &VkSwapchain) {
-        // クリア操作の記録ロジック
-        todo!();
-    }
-
-    fn end_command_buffer(&self, command_buffer: vk::CommandBuffer) {
-        // コマンドバッファの終了ロジック
-        todo!();
+    fn end_command_buffer(&self, command_buffer: &vk::CommandBuffer) -> TmpResult<()> {
+        unsafe {
+            self.device.end_command_buffer(*command_buffer)?;
+        }
+        Ok(())
     }
 
     fn submit_command_buffer(&self, command_buffer: vk::CommandBuffer, swapchain: &VkSwapchain) {
@@ -437,14 +511,14 @@ fn create_device(
 /// A result containing the created framebuffer or an error.
 fn create_framebuffer(
     device: &Device,
-    render_pass: vk::RenderPass,
-    image_view: vk::ImageView,
-    extent: vk::Extent2D,
+    render_pass: &vk::RenderPass,
+    image_view: &vk::ImageView,
+    extent: &vk::Extent2D,
 ) -> TmpResult<vk::Framebuffer> {
-    let attachments = [image_view];
+    let attachments = [*image_view];
 
     let framebuffer_info = vk::FramebufferCreateInfo::builder()
-        .render_pass(render_pass)
+        .render_pass(*render_pass)
         .attachments(&attachments)
         .width(extent.width)
         .height(extent.height)
