@@ -23,7 +23,7 @@ fn main() {
         VkRenderer::new(&window.raw_display_handle(), &window.raw_window_handle()).unwrap(),
     );
 
-    let swapchain = VkSwapchain::new(
+    let mut swapchain = VkSwapchain::new(
         &renderer,
         &window.raw_display_handle(),
         &window.raw_window_handle(),
@@ -44,6 +44,9 @@ fn main() {
                 event: WindowEvent::Resized(size),
             } if window_id == window.id() => {
                 println!("window resized. size: {:?}", size);
+                swapchain
+                    .recreate(size.width, size.height)
+                    .expect("Failed to recreate swapchain.");
             }
             Event::RedrawRequested(_) => {
                 renderer.render(&swapchain).expect("Failed to render.");

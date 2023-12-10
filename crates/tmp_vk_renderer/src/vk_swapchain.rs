@@ -19,6 +19,8 @@ pub struct VkSwapchain {
     renderer: Rc<VkRenderer>,
     surface_loader: ash::extensions::khr::Surface,
     swapchain_loader: ash::extensions::khr::Swapchain,
+    display_handle: RawDisplayHandle,
+    window_handle: RawWindowHandle,
     surface: vk::SurfaceKHR,
     pub(crate) swapchain: vk::SwapchainKHR,
     pub(crate) image_format: vk::Format,
@@ -73,6 +75,8 @@ impl VkSwapchain {
             renderer: renderer.clone(),
             surface_loader,
             swapchain_loader,
+            display_handle: *display_handle,
+            window_handle: *window_handle,
             surface,
             swapchain,
             image_format,
@@ -130,10 +134,40 @@ impl VkSwapchain {
             .set((self.current_frame.get() + 1) % self.frame_resources.len());
         Ok(result)
     }
-}
 
-impl Drop for VkSwapchain {
-    fn drop(&mut self) {
+    pub fn recreate(&mut self, window_width: u32, window_height: u32) -> TmpResult<()> {
+        self.destroy_resources();
+
+        let (
+            surface,
+            swapchain,
+            image_format,
+            image_color_space,
+            image_extent,
+            present_mode,
+            frame_resources,
+        ) = create_swapchain_resources(
+            &self.renderer,
+            &self.surface_loader,
+            &self.swapchain_loader,
+            &self.display_handle,
+            &self.window_handle,
+            window_width,
+            window_height,
+        )?;
+
+        self.surface = surface;
+        self.swapchain = swapchain;
+        self.image_format = image_format;
+        self.image_color_space = image_color_space;
+        self.image_extent = image_extent;
+        self.present_mode = present_mode;
+        self.frame_resources = frame_resources;
+
+        Ok(())
+    }
+
+    fn destroy_resources(&mut self) {
         let device = &self.renderer.device;
 
         unsafe { device.device_wait_idle().expect("device_wait_idle error") };
@@ -150,6 +184,12 @@ impl Drop for VkSwapchain {
         };
 
         unsafe { self.surface_loader.destroy_surface(self.surface, None) };
+    }
+}
+
+impl Drop for VkSwapchain {
+    fn drop(&mut self) {
+        self.destroy_resources()
     }
 }
 
