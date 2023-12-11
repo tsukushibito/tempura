@@ -485,7 +485,7 @@ fn create_device(
 ) -> TmpResult<Device> {
     let extension_names = [
         ash::extensions::khr::Swapchain::name().as_ptr(),
-        // #[cfg(any(target_os = "macos", target_os = "ios"))]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         vk::KhrPortabilitySubsetFn::name().as_ptr(),
     ];
 
