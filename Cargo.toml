@@ -7,7 +7,7 @@ edition = "2021"
 members = ["crates/*"]
 
 [dependencies]
-tmp_vk_renderer = { path = "crates/tmp_vk_renderer" }
+tmp_vk_renderer = { path = "crates/tmp_vk_renderer", features = ["develop"] }
 
 [dev-dependencies]
 raw-window-handle = "0.5"

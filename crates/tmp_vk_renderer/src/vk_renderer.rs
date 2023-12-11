@@ -86,7 +86,7 @@ impl VkRenderer {
             self.render_pass.set(Some(render_pass));
         }
 
-        swapchain.wait_for_current_frame_fence();
+        swapchain.wait_for_current_frame_fence()?;
 
         let (frame_resource, is_suboptimal) = swapchain.acquire_next_frame_resource()?;
 
@@ -94,17 +94,28 @@ impl VkRenderer {
             .framebuffers
             .borrow_mut()
             .entry(frame_resource.image_view)
-            .or_insert(create_framebuffer(
-                &self.device,
-                &self.render_pass.get().unwrap(),
-                &frame_resource.image_view,
-                &swapchain.image_extent,
-            )?);
+            .or_insert_with(|| {
+                create_framebuffer(
+                    &self.device,
+                    &self.render_pass.get().unwrap(),
+                    &frame_resource.image_view,
+                    &swapchain.image_extent,
+                )
+                .expect("Failed to create_framebuffer")
+            });
 
         let command_buffer = &frame_resource.command_buffer;
         let image_available_semaphore = &frame_resource.image_available_semaphore;
         let render_finished_semaphore = &frame_resource.render_finished_semaphore;
         let in_flight_fence = &frame_resource.in_flight_fence;
+
+        // コマンドプールのリセットでコマンドバッファをリセット
+        unsafe {
+            self.device.reset_command_pool(
+                frame_resource.command_pool,
+                vk::CommandPoolResetFlags::empty(),
+            )?;
+        }
 
         // コマンドバッファの開始
         self.begin_command_buffer(command_buffer)?;
@@ -134,8 +145,12 @@ impl VkRenderer {
         Ok(())
     }
 
-    pub(crate) fn release_framebuffer(&mut self, image_view: &vk::ImageView) {
-        self.framebuffers.borrow_mut().remove(image_view);
+    pub(crate) fn destroy_framebuffers(&self) {
+        for (_, framebuffer) in self.framebuffers.borrow_mut().iter_mut() {
+            unsafe { self.device.destroy_framebuffer(*framebuffer, None) };
+        }
+
+        self.framebuffers.borrow_mut().clear();
     }
 
     fn begin_command_buffer(&self, command_buffer: &vk::CommandBuffer) -> TmpResult<()> {
@@ -201,6 +216,11 @@ impl Drop for VkRenderer {
     /// Cleans up Vulkan resources when the `VkRenderer` is dropped.
     fn drop(&mut self) {
         _ = unsafe { self.device.device_wait_idle() };
+        self.destroy_framebuffers();
+        unsafe {
+            self.device
+                .destroy_render_pass(self.render_pass.get().unwrap(), None)
+        };
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&self.entry, &self.instance);
         unsafe {
             debug_utils_loader.destroy_debug_utils_messenger(self.debug_utils_messenger, None)
@@ -329,8 +349,8 @@ fn create_debug_utils_messenger(
         .message_severity(
             vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
                 | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+            // | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
         )
         .message_type(
             vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
@@ -531,6 +551,7 @@ fn create_framebuffer(
     image_view: &vk::ImageView,
     extent: &vk::Extent2D,
 ) -> TmpResult<vk::Framebuffer> {
+    println!("create_framebuffer");
     let attachments = [*image_view];
 
     let framebuffer_info = vk::FramebufferCreateInfo::builder()

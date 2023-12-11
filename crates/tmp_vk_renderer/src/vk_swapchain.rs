@@ -89,21 +89,21 @@ impl VkSwapchain {
         })
     }
 
-    pub(crate) fn wait_for_current_frame_fence(&self) {
+    pub(crate) fn wait_for_current_frame_fence(&self) -> TmpResult<()> {
         let frame_resource = &self.frame_resources[self.current_frame.get()];
         let fences = [frame_resource.in_flight_fence];
         unsafe {
             self.renderer
                 .device
-                .wait_for_fences(&fences, true, std::u64::MAX)
-                .expect("Failed to wait for Fence.")
-        }
+                .wait_for_fences(&fences, true, std::u64::MAX)?
+        };
+        unsafe { self.renderer.device.reset_fences(&fences)? };
+        Ok(())
     }
 
     pub(crate) fn acquire_next_frame_resource(&self) -> TmpResult<(&FrameResource, bool)> {
         let semaphre = &self.frame_resources[self.current_frame.get()].image_available_semaphore;
         let (index, is_suboptimal) = unsafe {
-            let device = &self.renderer.device;
             self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 std::u64::MAX,
@@ -137,6 +137,7 @@ impl VkSwapchain {
 
     pub fn recreate(&mut self, window_width: u32, window_height: u32) -> TmpResult<()> {
         self.destroy_resources();
+        self.renderer.destroy_framebuffers();
 
         let (
             surface,
@@ -175,7 +176,9 @@ impl VkSwapchain {
         for frame_resource in &self.frame_resources {
             unsafe { device.destroy_command_pool(frame_resource.command_pool, None) };
             unsafe { device.destroy_image_view(frame_resource.image_view, None) };
-            // unsafe { device.destroy_image(frame_resource.image, None) };
+            unsafe { device.destroy_fence(frame_resource.in_flight_fence, None) };
+            unsafe { device.destroy_semaphore(frame_resource.image_available_semaphore, None) };
+            unsafe { device.destroy_semaphore(frame_resource.render_finished_semaphore, None) };
         }
 
         unsafe {
