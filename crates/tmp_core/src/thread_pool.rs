@@ -12,6 +12,7 @@ enum Message {
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
+    receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
 }
 
 impl ThreadPool {
@@ -34,7 +35,11 @@ impl ThreadPool {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender,
+            receiver,
+        }
     }
 
     /// Sends a job to the pool.
@@ -57,6 +62,37 @@ impl ThreadPool {
         for worker in &mut self.workers {
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
+            }
+        }
+    }
+
+    pub fn get_receiver(&self) -> Arc<Mutex<mpsc::Receiver<Message>>> {
+        self.receiver.clone()
+    }
+}
+
+pub fn execute_job_from_queue(receiver: Arc<Mutex<mpsc::Receiver<Message>>>) {
+    loop {
+        let message = {
+            let lock = receiver.lock().unwrap();
+            lock.try_recv()
+        };
+
+        match message {
+            Ok(Message::Job(job)) => {
+                job();
+            }
+            Ok(Message::Terminate) => {
+                // ジョブが終了メッセージの場合はループを抜ける
+                break;
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                // キューが空の場合はループを抜ける
+                break;
+            }
+            Err(_) => {
+                // その他のエラー（通常は起こらない）
+                break;
             }
         }
     }
