@@ -1,18 +1,19 @@
+use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use log;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
-enum Message {
+pub enum Message {
     Job(Job),
     Terminate,
 }
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Message>,
-    receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
+    sender: Sender<Message>,
+    receiver: Receiver<Message>,
 }
 
 impl ThreadPool {
@@ -26,13 +27,12 @@ impl ThreadPool {
     pub fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
 
-        let (sender, receiver) = mpsc::channel();
-        let receiver = Arc::new(Mutex::new(receiver));
+        let (sender, receiver) = unbounded();
 
         let mut workers = Vec::with_capacity(size);
 
         for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+            workers.push(Worker::new(id, receiver.clone()));
         }
 
         ThreadPool {
@@ -66,17 +66,14 @@ impl ThreadPool {
         }
     }
 
-    pub fn get_receiver(&self) -> Arc<Mutex<mpsc::Receiver<Message>>> {
+    pub fn get_receiver(&self) -> Receiver<Message> {
         self.receiver.clone()
     }
 }
 
-pub fn execute_job_from_queue(receiver: Arc<Mutex<mpsc::Receiver<Message>>>) {
+pub fn execute_job_from_queue(receiver: Receiver<Message>) {
     loop {
-        let message = {
-            let lock = receiver.lock().unwrap();
-            lock.try_recv()
-        };
+        let message = receiver.try_recv();
 
         match message {
             Ok(Message::Job(job)) => {
@@ -86,7 +83,7 @@ pub fn execute_job_from_queue(receiver: Arc<Mutex<mpsc::Receiver<Message>>>) {
                 // ジョブが終了メッセージの場合はループを抜ける
                 break;
             }
-            Err(mpsc::TryRecvError::Empty) => {
+            Err(TryRecvError::Empty) => {
                 // キューが空の場合はループを抜ける
                 break;
             }
@@ -110,19 +107,21 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
+    fn new(id: usize, receiver: Receiver<Message>) -> Worker {
         let thread = thread::spawn(move || loop {
-            let message = receiver.lock().unwrap().recv().unwrap();
-
-            match message {
-                Message::Job(job) => {
-                    log::debug!("Worker {} got a job; executing.", id);
-                    job();
+            if let Ok(message) = receiver.recv() {
+                match message {
+                    Message::Job(job) => {
+                        log::debug!("Worker {} got a job; executing.", id);
+                        job();
+                    }
+                    Message::Terminate => {
+                        log::debug!("Worker {} was told to terminate.", id);
+                        break;
+                    }
                 }
-                Message::Terminate => {
-                    log::debug!("Worker {} was told to terminate.", id);
-                    break;
-                }
+            } else {
+                break;
             }
         });
 
@@ -140,15 +139,17 @@ mod tests {
 
     #[test]
     fn test_thread_pool() {
-        let pool = ThreadPool::new(2);
+        let pool = ThreadPool::new(8);
 
-        for i in 0..4 {
+        for i in 0..8 {
             pool.execute(move || {
-                println!("Executing job {}", i);
+                println!("Executing job {}, {:?}", i, std::thread::current());
             });
         }
 
-        // Sleep for a while to allow threads to execute
-        thread::sleep(std::time::Duration::from_secs(2));
+        let receiver = pool.get_receiver();
+        execute_job_from_queue(receiver);
+
+        println!("end");
     }
 }
